@@ -209,7 +209,7 @@ void gen_c_statement (node *mynode,void *args) {
 				fprintf (myFile,"+ node%d;\n",myedge->edge->id);
 				break;
 			 case MULT:
-				fprintf (myFile,"* coeff[%d][%d];\n",mynode->layer,mynode->input_number);
+				fprintf (myFile,"* coeff%d[%d][%d];\n",mynode->layer,mynode->neuron,mynode->input_number);
 				break;
 		}
 	
@@ -253,6 +253,7 @@ void inc_functional_utilization (node *mynode,void *args) {
 void gen_c_code (node **layers,
 						int num_layers,
 						int num_inputs,
+						int hidden_layer_size,
 						int num_outputs,
 						char *filename) {
 							
@@ -297,7 +298,7 @@ void gen_c_code (node **layers,
 	traverse_dag(layers,num_layers,num_inputs,num_outputs,&myargs,gen_c_declarations,FROM_START);
 	
 	// add the coefficient array
-	fprintf(myFile,"coeff[%d][%d];\n",num_layers-1,num_layers-1);
+	fprintf(myFile,"coeff1[%d][%d],coeff2[%d][%d];\n",hidden_layer_size,num_inputs,num_outputs,hidden_layer_size);
 	fprintf(myFile,"\n");
 	
 	// generate the loop

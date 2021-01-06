@@ -9,16 +9,16 @@
 
 // MLP topology
 #define	NUM_LAYERS			4  // input+hidden+output+1
-#define NUM_INPUTS			5
-#define HIDDEN_LAYER_SIZE	5
+#define NUM_INPUTS			3
+#define HIDDEN_LAYER_SIZE	3
 #define NUM_OUTPUTS			1
 
 // memory allocation for BFS
 #define QUEUESIZE			1024
 
 // resource constraints
-#define NUM_MULTIPLIERS		2
-#define NUM_ADDERS			2
+#define NUM_MULTIPLIERS		5
+#define NUM_ADDERS			5
 
 // define overall latency constraint
 // (max cycles beyond lower bound)
@@ -64,6 +64,7 @@ typedef struct node {
 	int scheduled_cycle;
 	int layer;
 	int input_number;
+	int neuron;
 } node;
 
 // type for an edge
@@ -99,6 +100,7 @@ void clear_flags (node *mynode,void *args);
 void gen_c_code (node **layers,
 						int num_layers,
 						int num_inputs,
+						int hidden_layer_size,
 						int num_outputs,
 						char *filename);
 void compute_functional_utilization(node **layers,int num_layers,int num_inputs,int num_outputs,argstype *myargs);

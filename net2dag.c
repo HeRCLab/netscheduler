@@ -29,7 +29,8 @@ int add_layer (node **layers,int layer_num,int id,int prev_layer_size,int new_la
 
 				// create new multiplier node and initialize
 				multiplier = create_node (MULT,id++);
-				multiplier->layer = i;
+				multiplier->layer = layer_num;
+				multiplier->neuron = i;
 				multiplier->input_number = j;
 
 				// link it back to the previous layer

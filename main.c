@@ -26,7 +26,7 @@ int main () {
 	gen_dot(layers,"my_dag.pdf",4,NUM_INPUTS,1);
 	
 	// generate C file
-	gen_c_code(layers,NUM_LAYERS,NUM_INPUTS,NUM_OUTPUTS,"network.c");
+	gen_c_code(layers,NUM_LAYERS,NUM_INPUTS,HIDDEN_LAYER_SIZE,NUM_OUTPUTS,"network.c");
 	
 	return 0;
 }

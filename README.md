@@ -26,10 +26,14 @@ sudo apt-get install graphviz
 4. *Maximum iteration interval*: MAX_II
 
 - Build
-`make`
+```
+make
+```
 
 - Run
-`schednet`
+```
+schednet
+```
 
 - Open the downstream files:
 1. my_dag.pdf

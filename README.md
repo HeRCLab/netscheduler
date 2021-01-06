@@ -7,7 +7,7 @@ Tested with version 4.65-2
 \
 To install:
 ```
-sudo apt-get install libglpk40
+sudo apt-get install libglpk40 glpk-utils
 ```
 - Graphviz
 \

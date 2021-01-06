@@ -27,6 +27,12 @@
 // maximum iteration interval
 #define MAX_II				5
 
+// functional unit latencies
+#define LATENCY_MULTIPLIER	1
+#define LATENCY_ADDER		3
+#define LATENCY_INPUT		1
+#define LATENCY_OUTPUT		1
+
 // Don't change anything below this line unless you intend to modify
 // the code behavior
 #define NODETYPE(t)			t==INPUT ? "input" : \
@@ -34,12 +40,11 @@
 							t==ADD ? "add" : \
 							t==OUTPUT ? "output" : \
 							"unknown"
-
-#define LATENCY_MULTIPLIER	1
-#define LATENCY_ADDER		3
 							
 #define LATENCY(node)		node == MULT ? LATENCY_MULTIPLIER : \
 							node == ADD ? LATENCY_ADDER : \
+							node == INPUT ? LATENCY_INPUT : \
+							node == OUTPUT ? LATENCY_OUTPUT : \
 							0
 
 #define max(a,b) a > b ? a : b;

@@ -6,13 +6,17 @@
 Tested with version 4.65-2
 \
 To install:
-`sudo apt-get install libglpk40
+```
+sudo apt-get install libglpk40
+```
 - Graphviz
 \
 Tested with version 2.42.2-3build2
 \
 To install:
-`sudo apt-get install graphviz
+```
+sudo apt-get install graphviz
+```
 
 ## To use:
 - Edit the following defines in netscheduler.h:

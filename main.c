@@ -7,7 +7,7 @@ int main () {
 	// create DAG for basic 3-layer network
 	// actually 4 layers, since our output is considered its own layer, since
 	// we can use its scheduled cycle as the total network latency
-	layers=create_basic_network_dag(NUM_INPUTS,HIDDEN_LAYER_SIZE);
+	layers=create_basic_network_dag(NUM_LAYERS,NUM_INPUTS,HIDDEN_LAYER_SIZE);
 	
 	// schedule the DAG
 	// actually, this only computes ASAP and ALAPs for each node

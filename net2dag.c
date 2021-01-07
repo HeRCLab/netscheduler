@@ -105,13 +105,14 @@ int add_layer (node **layers,int layer_num,int id,int prev_layer_size,int new_la
 }
 
 // create DAG for a basic 3,4,1 MLP
-node **create_basic_network_dag (int num_inputs,int hidden_size) {
+node **create_basic_network_dag (int num_layers,int num_inputs,int hidden_size) {
 	node *newnode=NULL,
 		 **layers;
 
 	int id=0;
 
 	layers=(node **)malloc(NUM_LAYERS*sizeof(node*));
+	for (int i=0;i<num_layers;i++) layers[i]=0;
 
 	id=add_layer(layers,0,id,-1,num_inputs,INPUT_LAYER);
 	id=add_layer(layers,1,id,num_inputs,hidden_size,NEURON_LAYER);

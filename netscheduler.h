@@ -115,7 +115,7 @@ void inc_functional_utilization (node *mynode,void *args);
 
 // net to DAG routines
 int add_layer (node **layers,int layer_num,int id,int prev_layer_size,int new_layer_size,layer_type type);
-node **create_basic_network_dag (int num_inputs,int hidden_size);
+node **create_basic_network_dag (int num_layers,int num_inputs,int hidden_size);
 
 // scheduling
 void set_asaps (node *mynode,void *args);

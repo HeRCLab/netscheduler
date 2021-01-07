@@ -229,9 +229,9 @@ void compute_functional_utilization(node **layers,int num_layers,int num_inputs,
 	int max_latency = layers[num_layers-1]->alap_cycle+1;
 	
 	// allocate and initialize function unit usage counters
-	myargs->add_use = (int *)malloc(sizeof(int) * layers[num_layers-1]->alap_cycle);
+	myargs->add_use = (int *)malloc(sizeof(int) * max_latency);
 	for (int i=0;i<max_latency;i++) myargs->add_use[i]=0;
-	myargs->mult_use = (int *)malloc(sizeof(int) * layers[num_layers-1]->alap_cycle);
+	myargs->mult_use = (int *)malloc(sizeof(int) * max_latency);
 	for (int i=0;i<max_latency;i++) myargs->mult_use[i]=0;
 	
 	traverse_dag(layers,num_layers,num_inputs,num_outputs,myargs,clear_flags,FROM_START);

@@ -36,12 +36,14 @@ node *create_node (node_type type,int id) {
 	node *mynode = (node *)malloc(sizeof(node));
 	mynode->type = type;
 	mynode->id = id;
+	mynode->in_edges = NULL; // no inputs yet
 	mynode->out_edges = NULL; // no outputs yet
 	mynode->next = NULL;
 	mynode->prev = NULL;
 	mynode->asap_cycle = -1;
 	mynode->alap_cycle = -1;
 	mynode->scheduled_cycle = -1;
+	
 	return mynode;
 }
 

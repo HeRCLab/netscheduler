@@ -17,15 +17,15 @@
 #define QUEUESIZE			1024
 
 // resource constraints
-#define NUM_MULTIPLIERS		5
-#define NUM_ADDERS			5
+#define NUM_MULTIPLIERS		3
+#define NUM_ADDERS			3
 
 // define overall latency constraint
 // (max cycles beyond lower bound)
-#define SLACK				10
+#define SLACK				2
 
 // maximum iteration interval
-#define MAX_II				5
+#define MAX_II				0
 
 // functional unit latencies
 #define LATENCY_MULTIPLIER	1

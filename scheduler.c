@@ -260,7 +260,7 @@ void solve_schedule (node **layers,
 	snprintf(output_filename,1024,"%s.out",filename_prefix);
 	
 	// run the solver
-	snprintf(shell_command,1024,"glpsol --lp %s -o %s",filename,output_filename);
+	snprintf(shell_command,1024,"glpsol --binarize --tmlim 600 --lp %s -o %s",filename,output_filename);
 	ret = system(shell_command);
 	if (ret==-1) {
 		snprintf(str,1024,"Error running \"%s\"",shell_command);

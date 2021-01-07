@@ -22,9 +22,9 @@
 
 // define overall latency constraint
 // (max cycles beyond lower bound)
-#define SLACK				2
+#define SLACK				1
 
-// maximum iteration interval
+// maximum iteration interval (actually the variation, so 0 means all inputs are consumed immediately)
 #define MAX_II				0
 
 // functional unit latencies
@@ -88,6 +88,8 @@ typedef struct {
 	int id;
 	int *add_use;
 	int *mult_use;
+	int *add_scheduled_utilization;
+	int *mult_scheduled_utilization;
 } argstype;
 
 // type for traversal order
@@ -130,5 +132,6 @@ void solve_schedule (node **layers,
 						int num_inputs,
 						int num_outputs,
 						char *filename);
+void tabulate_functional_unit_utilization (node *layers[],int num_layers,int num_inputs,int num_outputs);
 
 #endif

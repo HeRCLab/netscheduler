@@ -112,8 +112,11 @@ void generate_declarations (node *mynode,void *args) {
 	argstype *myargs = (argstype *)args;
 	FILE *myFile = myargs->file;
 	
-	for (int i=mynode->asap_cycle;i<=mynode->alap_cycle;i++)
-		fprintf(myFile,"n_%d_c_%d\n",mynode->id,i);
+	if (!mynode->flag) {
+		for (int i=mynode->asap_cycle;i<=mynode->alap_cycle;i++)
+			fprintf(myFile,"n_%d_c_%d\n",mynode->id,i);
+		mynode->flag=1;
+	}
 }
 
 void generate_ilp_file (node **layers,
@@ -216,6 +219,14 @@ void generate_ilp_file (node **layers,
 	// add declarations
 	fprintf (myFile,"\n\\ declarations\n");
 	fprintf (myFile,"\ninteger\n\n");
+	// clear flags
+	traverse_dag (layers,
+			  num_layers,
+			  num_inputs,
+			  num_outputs,
+			  myargs,
+			  clear_flags,
+			  FROM_START);
 	traverse_dag (layers,
 				  num_layers,
 				  num_inputs,
@@ -283,7 +294,7 @@ void solve_schedule (node **layers,
 		argstype myargs;
 		
 		fscanf(myFile,"%s",str);
-		printf("read: \"%s\"\n",str);
+		//printf("read: \"%s\"\n",str);
 		sscanf(str,"n_%d_c_%d",&myargs.id,&myargs.cycle);
 		
 		traverse_dag (layers,
@@ -296,4 +307,63 @@ void solve_schedule (node **layers,
 	}
 	
 	fclose(myFile);
+}
+
+void incr_utilization (node *mynode,void *args) {
+	argstype *myargs = (argstype *)args;
+	
+	if (!mynode->flag) {
+		if (mynode->type == ADD)
+			myargs->add_scheduled_utilization[mynode->scheduled_cycle]++;
+		else if (mynode->type == MULT)
+			myargs->mult_scheduled_utilization[mynode->scheduled_cycle]++;
+		
+		mynode->flag=1;
+	}
+}
+
+void tabulate_functional_unit_utilization (node *layers[],int num_layers,int num_inputs,int num_outputs) {
+	// find scheduled latency
+	int max_cycle = layers[num_layers-1]->scheduled_cycle+1;
+	
+	// allocate and initialize tables
+	int *adder_utilization = (int *)malloc(sizeof(int)*max_cycle);
+	int *multiplier_utilization = (int *)malloc(sizeof(int)*max_cycle);
+	
+	for (int i=0;i<max_cycle;i++) {
+		adder_utilization[i]=0;
+		multiplier_utilization[i]=0;
+	}
+	
+	argstype myargs = {.add_scheduled_utilization = adder_utilization,
+					   .mult_scheduled_utilization = multiplier_utilization};
+					   
+	// clear flags
+	traverse_dag (layers,
+			  num_layers,
+			  num_inputs,
+			  num_outputs,
+			  (void *)&myargs,
+			  clear_flags,
+			  FROM_START);
+			  
+	// count
+	traverse_dag (layers,
+			  num_layers,
+			  num_inputs,
+			  num_outputs,
+			  (void *)&myargs,
+			  incr_utilization,
+			  FROM_START);
+			  
+	printf ("Functional unit utilization\n"
+	        "---------------------------\n");
+	
+	printf ("%10s%12s%12s\n","cycle","multiplier","adder");
+	
+	for (int i=0;i<max_cycle;i++)
+		printf ("%10d%12d%12d\n",i,multiplier_utilization[i],adder_utilization[i]);
+	
+	free(adder_utilization);
+	free(multiplier_utilization);
 }

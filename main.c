@@ -28,5 +28,8 @@ int main () {
 	// generate a DOT file
 	gen_dot(layers,"my_dag.pdf",4,NUM_INPUTS,1);
 	
+	// compute actual functional utilization and generate report
+	tabulate_functional_unit_utilization (layers,NUM_LAYERS,NUM_INPUTS,NUM_OUTPUTS);
+	
 	return 0;
 }

@@ -126,7 +126,7 @@ void generate_ilp_file (node **layers,
 						char *filename,
 						argstype *myargs) {
 							
-	int last_cycle = layers[num_layers-1]->asap_cycle;
+	int last_cycle = layers[num_layers-1]->alap_cycle;
 	FILE *myFile;
 	char str[1024];
 	
@@ -165,7 +165,7 @@ void generate_ilp_file (node **layers,
 	fprintf (myFile,"\\ resource constraints\n");
 	
 	// define resource constraint for each cycle
-	for (myargs->cycle = 0;myargs->cycle < last_cycle;myargs->cycle++) {
+	for (myargs->cycle = 0;myargs->cycle <= last_cycle;myargs->cycle++) {
 		
 		// clear flags
 		traverse_dag (layers,
@@ -325,6 +325,9 @@ void incr_utilization (node *mynode,void *args) {
 void tabulate_functional_unit_utilization (node *layers[],int num_layers,int num_inputs,int num_outputs) {
 	// find scheduled latency
 	int max_cycle = layers[num_layers-1]->scheduled_cycle+1;
+	
+	// check if the scheduled succeeded
+	if (max_cycle==0) return;
 	
 	// allocate and initialize tables
 	int *adder_utilization = (int *)malloc(sizeof(int)*max_cycle);

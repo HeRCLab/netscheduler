@@ -224,7 +224,7 @@ void clear_flags (node *mynode,void *args) {
 void compute_functional_utilization(node **layers,int num_layers,int num_inputs,int num_outputs,argstype *myargs) {
 	
 	// assume this is a safe way to find the maximum possible latency
-	int max_latency = layers[num_layers-1]->alap_cycle;
+	int max_latency = layers[num_layers-1]->alap_cycle+1;
 	
 	// allocate and initialize function unit usage counters
 	myargs->add_use = (int *)malloc(sizeof(int) * layers[num_layers-1]->alap_cycle);
@@ -241,7 +241,7 @@ void inc_functional_utilization (node *mynode,void *args) {
 	
 	if (!mynode->flag) {
 	
-		for (int i=mynode->asap_cycle;i<mynode->alap_cycle;i++) {
+		for (int i=mynode->asap_cycle;i<=mynode->alap_cycle;i++) {
 			if (mynode->type == ADD) myargs->add_use[i]++; else
 			if (mynode->type == MULT) myargs->mult_use[i]++;
 		}

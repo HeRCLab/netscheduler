@@ -304,7 +304,8 @@ void gen_c_code (node **layers,
 	fprintf(myFile,"\n");
 	
 	// generate the loop
-	fprintf(myFile,"\tfor (int i=0;i<1024;i++) {\n#pragma HLS PIPELINE II=1\n");
+	//fprintf(myFile,"\tfor (int i=0;i<1024;i++) {\n#pragma HLS PIPELINE II=1\n");
+	fprintf(myFile,"\tfor (int i=0;i<1024;i++) {\n#pragma HLS LATENCY max=1\n");
 	traverse_dag(layers,num_layers,num_inputs,num_outputs,&myargs,clear_flags,FROM_START);
 	traverse_dag(layers,num_layers,num_inputs,num_outputs,&myargs,gen_c_statement,FROM_START);
 	fprintf(myFile,"\t}\n");

@@ -29,7 +29,7 @@ void count_registers (node *mynode,void *args) {
 		edge *myedge = mynode->out_edges;
 		while (myedge) {
 			// find all cycles where output value is held
-			int start_cycle = mynode->scheduled_cycle+LATENCY(mynode->type);
+			int start_cycle = (mynode->scheduled_cycle) + LATENCY(mynode->type);
 			int end_cycle = myedge->edge->scheduled_cycle;
 			
 			printf("%d -> %d cycles %d to %d\n",mynode->id,myedge->edge->id,start_cycle,end_cycle);

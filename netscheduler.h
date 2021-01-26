@@ -53,7 +53,7 @@
 typedef enum {INPUT,MULT,ADD,OUTPUT} node_type;
 
 // type for a layer type
-typedef enum {INPUT_LAYER,NEURON_LAYER,OUTPUT_LAYER} layer_type;
+typedef enum {INPUT_LAYER,NEURON_LAYER,NEURON_BINARY_ADD_LAYER,OUTPUT_LAYER} layer_type;
 
 // type for a DFG node
 typedef struct node {

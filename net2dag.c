@@ -1,7 +1,7 @@
 #include "netscheduler.h"
 
 int add_layer (node **layers,int layer_num,int id,int prev_layer_size,int new_layer_size,layer_type type) {
-	node *adder,*output=0,*prev_multiplier,*prev_adder,*multiplier,*newnode=0;
+	node *adder,*output=0,*prev_multiplier,*prev_adder,*multiplier,*newnode=0,*prev_layer_adder;
 
 	if (type == INPUT_LAYER) {
 		// create input layer
@@ -19,6 +19,79 @@ int add_layer (node **layers,int layer_num,int id,int prev_layer_size,int new_la
 		newnode->next = layers[0];
 		layers[0]->prev = newnode;
 
+	} else if (type == NEURON_BINARY_ADD_LAYER) {
+		
+		// create multipliers of hidden layer
+		for (int i=0;i<new_layer_size;i++) { // for each neuron on current layer...
+			for (int j=0;j<prev_layer_size;j++) { // for each input from the previous layer, add a multiplier and adder
+				// remember previous multiplier
+				prev_multiplier = multiplier;
+
+				// create new multiplier node and initialize
+				multiplier = create_node (MULT,id++);
+				multiplier->layer = layer_num;
+				multiplier->neuron = i;
+				multiplier->input_number = j;
+				
+				if (j>0) {
+					// link to previous multiplier
+					multiplier->prev = prev_multiplier;
+					multiplier->prev->next = multiplier;
+				}
+
+				// link it back to the previous layer
+				// find its corresponding input, which is number j
+				node *predecessor = layers[layer_num-1];
+
+				// walk to node j
+				for (int k=0;k<j;k++) predecessor = predecessor->next;
+				// connect multiplier back to output of previous layer
+				connect_nodes (predecessor,multiplier);
+			}
+			
+			// at this point, we're done with multipliers, now add adders
+			
+			while (prev_layer_adder->prev || prev_layer_adder->next) { // keep adding layers until we have one node left
+				int k=0; // adder count of current layer (of the binary adder tree)
+				node *prev_layer_adder = multiplier; // start with last multiplier created on previous layer
+				while (prev_layer_adder) {
+					// if there's only one remaining adder on the previous layer, bail out
+					if (!prev_layer_adder->prev) {
+						break;
+					}
+					// instance new adder
+					node *prev_adder = adder;
+					adder = create_node (ADD,id++);
+					if (k>1) {
+						adder->prev = prev_adder;
+						adder->prev->next = adder;
+					}
+					connect_nodes(prev_layer_adder->prev,adder);
+					connect_nodes(prev_layer_adder,adder);
+					
+					prev_layer_adder = prev_layer_adder->prev->prev; // jump two backward
+					k++;
+				}
+			}
+			
+			// connect the final adder output to the layer 1 list
+			if (i==0) {
+				layers[layer_num] = adder;
+			} else {
+				node *mynode = layers[layer_num];
+				while (mynode->next) mynode=mynode->next;
+				mynode->next = adder;
+				mynode->next->prev = mynode;
+				
+				// complete the ring
+				if (i==new_layer_size-1) {
+					mynode->next->next=layers[layer_num];
+					layers[layer_num]->prev = mynode;
+				}
+			}
+			
+		}
+		
 	} else if (type == NEURON_LAYER) {
 
 		// create multipliers of hidden layer
@@ -115,8 +188,8 @@ node **create_basic_network_dag (int num_layers,int num_inputs,int hidden_size) 
 	for (int i=0;i<num_layers;i++) layers[i]=0;
 
 	id=add_layer(layers,0,id,-1,num_inputs,INPUT_LAYER);
-	id=add_layer(layers,1,id,num_inputs,hidden_size,NEURON_LAYER);
-	id=add_layer(layers,2,id,hidden_size,1,NEURON_LAYER);
+	id=add_layer(layers,1,id,num_inputs,hidden_size,NEURON_BINARY_ADD_LAYER);
+	id=add_layer(layers,2,id,hidden_size,1,NEURON_BINARY_ADD_LAYER);
 	id=add_layer(layers,3,id,1,1,OUTPUT_LAYER);
 
 	return layers;

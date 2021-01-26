@@ -251,6 +251,64 @@ void inc_functional_utilization (node *mynode,void *args) {
 	}
 }
 
+void count_registers (node *mynode,void *args) {
+	if (!mynode->flag) {
+		
+		// check all outgoing edges
+		edge *myedge = mynode->out_edges;
+		while (myedge) {
+			// find all cycles where output value is held
+			int start_cycle = mynode->scheduled_cycle;
+			int latency = LATENCY(mynode->type);
+			start_cycle += latency;
+			
+			int end_cycle = myedge->edge->scheduled_cycle;
+			
+			printf("%d -> %d cycles %d to %d\n",mynode->id,myedge->edge->id,start_cycle,end_cycle);
+			
+			for (int i=start_cycle;i<end_cycle;i++)	((register_table *)args)->register_usage_by_cycle[i]++;
+			
+			myedge = myedge->next;
+		}
+		
+		mynode->flag=1;
+	}
+}
+
+void tabulate_registers (node *layers[],int num_layers,int num_inputs,int num_outputs) {
+	register_table myregistertable;
+	
+	int num_cycles = layers[num_layers-1]->scheduled_cycle;
+	
+	// allocate table
+	myregistertable.register_usage_by_cycle = (int *)malloc(sizeof(int)*num_cycles);
+	for (int i=0;i<num_cycles;i++) myregistertable.register_usage_by_cycle[i]=0;
+		
+	// clear flags
+	traverse_dag (layers,
+			  num_layers,
+			  num_inputs,
+			  num_outputs,
+			  NULL,
+			  clear_flags,
+			  FROM_START);
+	
+	// tally registers
+	traverse_dag (layers,
+				  num_layers,
+				  num_inputs,
+				  num_outputs,
+				  (void *)&myregistertable,
+				  count_registers,
+				  FROM_START);
+				  
+	printf ("register usage by cycle\n");
+	printf ("%10s%10s\n","cycle","usage");
+	for (int i=0;i<num_cycles;i++) {
+		printf ("%10d%10d\n",i,myregistertable.register_usage_by_cycle[i]);
+	}
+}
+
 void gen_c_code (node **layers,
 						int num_layers,
 						int num_inputs,

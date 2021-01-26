@@ -31,9 +31,11 @@ void count_registers (node *mynode,void *args) {
 			// find all cycles where output value is held
 			int start_cycle = mynode->scheduled_cycle;
 			int latency = LATENCY(mynode->type);
+			start_cycle += latency;
+			
 			int end_cycle = myedge->edge->scheduled_cycle;
 			
-			printf("%d -> %d cycles %d to %d\n",mynode->id,myedge->edge->id,start_cycle+latency,end_cycle);
+			printf("%d -> %d cycles %d to %d\n",mynode->id,myedge->edge->id,start_cycle,end_cycle);
 			
 			for (int i=start_cycle;i<end_cycle;i++)	((register_table *)args)->register_usage_by_cycle[i]++;
 			

@@ -31,5 +31,8 @@ int main () {
 	// compute actual functional utilization and generate report
 	tabulate_functional_unit_utilization (layers,NUM_LAYERS,NUM_INPUTS,NUM_OUTPUTS);
 	
+	// compute register usage by cycle
+	tabulate_registers (layers,NUM_LAYERS,NUM_INPUTS,NUM_OUTPUTS);
+	
 	return 0;
 }

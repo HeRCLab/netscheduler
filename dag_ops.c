@@ -51,7 +51,7 @@ void traverse_dag (node *layers[],
 				   int num_layers,
 				   int num_inputs,
 				   int num_outputs,
-				   argstype *args,
+				   void *args,
 				   void (nodefunc)(node *,void *),
 				   travordertype travorder) {
 					   
@@ -101,8 +101,7 @@ void traverse_dag (node *layers[],
 		}
 		
 		// process node
-		args->node = mynode;
-		nodefunc(mynode,(void *)args);
+		nodefunc(mynode,args);
 	}
 
 	free(stack);
@@ -174,7 +173,7 @@ void gen_dot (node *layers[],
 
 	argstype myargs = {.file = myFile};
 	
-	traverse_dag(layers,num_layers,num_inputs,num_outputs,&myargs,node2dot,FROM_END);
+	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,node2dot,FROM_END);
 
 	fprintf(myFile,"}\n");
 	fclose(myFile);
@@ -234,8 +233,8 @@ void compute_functional_utilization(node **layers,int num_layers,int num_inputs,
 	myargs->mult_use = (int *)malloc(sizeof(int) * max_latency);
 	for (int i=0;i<max_latency;i++) myargs->mult_use[i]=0;
 	
-	traverse_dag(layers,num_layers,num_inputs,num_outputs,myargs,clear_flags,FROM_START);
-	traverse_dag(layers,num_layers,num_inputs,num_outputs,myargs,inc_functional_utilization,FROM_START);
+	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)myargs,clear_flags,FROM_START);
+	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)myargs,inc_functional_utilization,FROM_START);
 }
 
 void inc_functional_utilization (node *mynode,void *args) {
@@ -294,10 +293,10 @@ void gen_c_code (node **layers,
 	fprintf(myFile,"\tfloat ");
 	
 	// clear to flags, so we declare each variable only once
-	traverse_dag(layers,num_layers,num_inputs,num_outputs,&myargs,clear_flags,FROM_START);
+	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,clear_flags,FROM_START);
 	
 	// generate the intermediate value declarations
-	traverse_dag(layers,num_layers,num_inputs,num_outputs,&myargs,gen_c_declarations,FROM_START);
+	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,gen_c_declarations,FROM_START);
 	
 	// add the coefficient array
 	fprintf(myFile,"coeff1[%d][%d],coeff2[%d][%d];\n",hidden_layer_size,num_inputs,num_outputs,hidden_layer_size);
@@ -306,8 +305,8 @@ void gen_c_code (node **layers,
 	// generate the loop
 	//fprintf(myFile,"\tfor (int i=0;i<1024;i++) {\n#pragma HLS PIPELINE II=1\n");
 	fprintf(myFile,"\tfor (int i=0;i<1024;i++) {\n#pragma HLS LATENCY max=1\n");
-	traverse_dag(layers,num_layers,num_inputs,num_outputs,&myargs,clear_flags,FROM_START);
-	traverse_dag(layers,num_layers,num_inputs,num_outputs,&myargs,gen_c_statement,FROM_START);
+	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,clear_flags,FROM_START);
+	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,gen_c_statement,FROM_START);
 	fprintf(myFile,"\t}\n");
 	
 	fprintf(myFile,"}\n");

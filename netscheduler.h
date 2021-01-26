@@ -72,6 +72,10 @@ typedef struct node {
 	int neuron;
 } node;
 
+typedef struct {
+	int *register_usage_by_cycle;
+} register_table;
+
 // type for an edge
 typedef struct edge {
 	node *edge;
@@ -102,7 +106,7 @@ void connect_nodes (node *pred,node *succ);
 node *create_node(node_type type,int id);
 void gen_dot (node *layers[],char *filename,int num_layers,int num_inputs,int num_outputs);
 void node2dot (node *mynode,void *args);
-void traverse_dag (node *layers[],int num_layers,int num_inputs,int num_outputs,argstype *args,void (nodefunc)(node *,void *),travordertype travorder);
+void traverse_dag (node *layers[],int num_layers,int num_inputs,int num_outputs,void *args,void (nodefunc)(node *,void *),travordertype travorder);
 void clear_flags (node *mynode,void *args);
 void gen_c_code (node **layers,
 						int num_layers,
@@ -133,5 +137,6 @@ void solve_schedule (node **layers,
 						int num_outputs,
 						char *filename);
 void tabulate_functional_unit_utilization (node *layers[],int num_layers,int num_inputs,int num_outputs);
+void tabulate_registers (node *layers[],int num_layers,int num_inputs,int num_outputs);
 
 #endif

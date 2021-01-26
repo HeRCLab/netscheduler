@@ -22,17 +22,64 @@ void set_alaps (node *mynode,void *args) {
 	}
 }
 
+void count_registers (node *mynode,void *arg) {
+	if (!mynode->flag) {
+		
+		// check all outgoing edges
+		edge *myedge = mynode->out_edges;
+		while (myedge) {
+			// find all cycles where output value is held
+			int start_cycle = mynode->scheduled_cycle+LATENCY(mynode->type);
+			int end_cycle = myedge->edge->scheduled_cycle;
+			
+			for (int i=start_cycle;i<end_cycle;i++)	(register_table *)args->register_usage_by_cycle[i]++;
+			
+			myedge = myedge->next;
+		}
+		
+		mynode->flag=1;
+	}
+}
+
+void tabulate_registers (node *layers[],int num_layers,int num_inputs,int num_outputs) {
+	register_table myregistertable;
+	
+	int num_cycles = layers[num_layers-1].scheduled_cycle;
+	
+	// allocate table
+	myregistertable.register_usage_by_cycle = (int *)malloc(sizeof(int)*num_cycles);
+	for (int i=0;i<num_cycles;i++) myregistertable.register_usage_by_cycle[i]=0;
+		
+	// clear flags
+	traverse_dag (layers,
+			  num_layers,
+			  num_inputs,
+			  num_outputs,
+			  NULL,
+			  clear_flags,
+			  FROM_START);
+	
+	// tally registers
+	traverse_dag (layers,
+				  num_layers,
+				  num_inputs,
+				  num_outputs,
+				  (void *)&myregistertable,
+				  count_registers,
+				  FROM_START);
+}
+
 void schedule (node *layers[],int num_layers,int num_inputs,int num_outputs) {
 	argstype myargs;
 	
 	// set asaps
-	traverse_dag (layers,num_layers,num_inputs,num_outputs,&myargs,set_asaps,FROM_START);
+	traverse_dag (layers,num_layers,num_inputs,num_outputs,(void *)&myargs,set_asaps,FROM_START);
 	
 	// set latency slack
 	layers[num_layers-1]->alap_cycle = layers[num_layers-1]->asap_cycle + SLACK;
 	
 	// set alaps
-	traverse_dag (layers,num_layers,num_inputs,num_outputs,&myargs,set_alaps,FROM_END);
+	traverse_dag (layers,num_layers,num_inputs,num_outputs,(void *)&myargs,set_alaps,FROM_END);
 	
 	// set alaps for inputs, which will hopefully allow for II > 1 (experimental)
 	node *mynode = layers[0];
@@ -157,7 +204,7 @@ void generate_ilp_file (node **layers,
 				  num_layers,
 				  num_inputs,
 				  num_outputs,
-				  myargs,
+				  (void *)myargs,
 				  emit_start_and_dependency_constraints,
 				  FROM_START);
 	
@@ -172,7 +219,7 @@ void generate_ilp_file (node **layers,
 				  num_layers,
 				  num_inputs,
 				  num_outputs,
-				  myargs,
+				  (void *)myargs,
 				  clear_flags,
 				  FROM_START);
 		
@@ -183,7 +230,7 @@ void generate_ilp_file (node **layers,
 					  num_layers,
 					  num_inputs,
 					  num_outputs,
-					  myargs,
+					  (void *)myargs,
 					  emit_resource_constraints,
 					  FROM_START);
 					  
@@ -196,7 +243,7 @@ void generate_ilp_file (node **layers,
 				  num_layers,
 				  num_inputs,
 				  num_outputs,
-				  myargs,
+				  (void *)myargs,
 				  clear_flags,
 				  FROM_START);
 		
@@ -207,7 +254,7 @@ void generate_ilp_file (node **layers,
 					  num_layers,
 					  num_inputs,
 					  num_outputs,
-					  myargs,
+					  (void *)myargs,
 					  emit_resource_constraints,
 					  FROM_START);
 		
@@ -224,14 +271,15 @@ void generate_ilp_file (node **layers,
 			  num_layers,
 			  num_inputs,
 			  num_outputs,
-			  myargs,
+			  (void *)myargs,
 			  clear_flags,
 			  FROM_START);
+			  
 	traverse_dag (layers,
 				  num_layers,
 				  num_inputs,
 				  num_outputs,
-				  myargs,
+				  (void *)myargs,
 				  generate_declarations,
 				  FROM_START);
 	
@@ -301,7 +349,7 @@ void solve_schedule (node **layers,
 			  num_layers,
 			  num_inputs,
 			  num_outputs,
-			  &myargs,
+			  (void *)&myargs,
 			  apply_schedule,
 			  FROM_START);
 	}

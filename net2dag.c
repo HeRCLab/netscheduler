@@ -61,7 +61,7 @@ int add_layer (node **layers,int layer_num,int id,int prev_layer_size,int new_la
 					// instance new adder
 					node *prev_adder = adder;
 					adder = create_node (ADD,id++);
-					if (k>1) {
+					if (k>0) {
 						adder->prev = prev_adder;
 						adder->prev->next = adder;
 					}

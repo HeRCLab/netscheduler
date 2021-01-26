@@ -22,7 +22,7 @@ void set_alaps (node *mynode,void *args) {
 	}
 }
 
-void count_registers (node *mynode,void *arg) {
+void count_registers (node *mynode,void *args) {
 	if (!mynode->flag) {
 		
 		// check all outgoing edges
@@ -32,7 +32,7 @@ void count_registers (node *mynode,void *arg) {
 			int start_cycle = mynode->scheduled_cycle+LATENCY(mynode->type);
 			int end_cycle = myedge->edge->scheduled_cycle;
 			
-			for (int i=start_cycle;i<end_cycle;i++)	(register_table *)args->register_usage_by_cycle[i]++;
+			for (int i=start_cycle;i<end_cycle;i++)	((register_table *)args)->register_usage_by_cycle[i]++;
 			
 			myedge = myedge->next;
 		}
@@ -44,7 +44,7 @@ void count_registers (node *mynode,void *arg) {
 void tabulate_registers (node *layers[],int num_layers,int num_inputs,int num_outputs) {
 	register_table myregistertable;
 	
-	int num_cycles = layers[num_layers-1].scheduled_cycle;
+	int num_cycles = layers[num_layers-1]->scheduled_cycle;
 	
 	// allocate table
 	myregistertable.register_usage_by_cycle = (int *)malloc(sizeof(int)*num_cycles);

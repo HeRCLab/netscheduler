@@ -65,8 +65,8 @@ int add_layer (node **layers,int layer_num,int id,int prev_layer_size,int new_la
 						adder->prev = prev_adder;
 						adder->prev->next = adder;
 					}
-					connect_nodes(prev_layer_adder->prev,adder);
 					connect_nodes(prev_layer_adder,adder);
+					connect_nodes(prev_layer_adder->next,adder);
 					
 					prev_layer_adder = prev_layer_adder->prev->prev; // jump two backward (should eventually become NULL on even-numbered layer size)
 					k++;

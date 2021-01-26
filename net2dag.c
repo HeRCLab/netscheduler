@@ -50,13 +50,12 @@ int add_layer (node **layers,int layer_num,int id,int prev_layer_size,int new_la
 			}
 			
 			// at this point, we're done with multipliers, now add adders
-			
+			prev_layer_adder = multiplier; // start with last multiplier
 			while (prev_layer_adder->prev || prev_layer_adder->next) { // keep adding layers until we have one node left
 				int k=0; // adder count of current layer (of the binary adder tree)
-				node *prev_layer_adder = multiplier; // start with last multiplier created on previous layer
 				while (prev_layer_adder) {
-					// if there's only one remaining adder on the previous layer, bail out
 					if (!prev_layer_adder->prev) {
+						// if there's only one remaining adder on the previous layer, bail out
 						break;
 					}
 					// instance new adder
@@ -69,9 +68,10 @@ int add_layer (node **layers,int layer_num,int id,int prev_layer_size,int new_la
 					connect_nodes(prev_layer_adder->prev,adder);
 					connect_nodes(prev_layer_adder,adder);
 					
-					prev_layer_adder = prev_layer_adder->prev->prev; // jump two backward
+					prev_layer_adder = prev_layer_adder->prev->prev; // jump two backward (should eventually become NULL on even-numbered layer size)
 					k++;
 				}
+				if (prev_layer_adder==NULL) prev_layer_adder = adder; // if previous layer was odd, start with odd man, otherwise, start with last adder created
 			}
 			
 			// connect the final adder output to the layer 1 list

@@ -254,22 +254,24 @@ void inc_functional_utilization (node *mynode,void *args) {
 void count_registers (node *mynode,void *args) {
 	if (!mynode->flag) {
 		
+		int start_cycle = mynode->scheduled_cycle;
+		int latency = LATENCY(mynode->type);
+		start_cycle += latency;
+		int end_cycle = start_cycle;
+		
 		// check all outgoing edges
 		edge *myedge = mynode->out_edges;
 		while (myedge) {
 			// find all cycles where output value is held
-			int start_cycle = mynode->scheduled_cycle;
-			int latency = LATENCY(mynode->type);
-			start_cycle += latency;
 			
-			int end_cycle = myedge->edge->scheduled_cycle;
+			if (myedge->edge->scheduled_cycle > end_cycle) end_cycle = myedge->edge->scheduled_cycle;
 			
 			printf("%d -> %d cycles %d to %d\n",mynode->id,myedge->edge->id,start_cycle,end_cycle);
 			
-			for (int i=start_cycle;i<end_cycle;i++)	((register_table *)args)->register_usage_by_cycle[i]++;
-			
 			myedge = myedge->next;
 		}
+		
+		for (int i=start_cycle;i<end_cycle;i++)	((register_table *)args)->register_usage_by_cycle[i]++;
 		
 		mynode->flag=1;
 	}

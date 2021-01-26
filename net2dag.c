@@ -71,7 +71,14 @@ int add_layer (node **layers,int layer_num,int id,int prev_layer_size,int new_la
 					prev_layer_adder = prev_layer_adder->prev->prev; // jump two backward (should eventually become NULL on even-numbered layer size)
 					k++;
 				}
-				if (prev_layer_adder==NULL) prev_layer_adder = adder; // if previous layer was odd, start with odd man, otherwise, start with last adder created
+				if (prev_layer_adder) {
+					// if previous layer was odd, start with odd man, but link it to current layer just finished
+					// this is a bit hacky, since it promotes the odd man out to the next layer
+					prev_layer_adder->prev = adder;
+				} else {
+					// otherwise, start with last adder created
+					prev_layer_adder = adder;
+				}
 			}
 			
 			// connect the final adder output to the layer 1 list

@@ -67,6 +67,12 @@ void tabulate_registers (node *layers[],int num_layers,int num_inputs,int num_ou
 				  (void *)&myregistertable,
 				  count_registers,
 				  FROM_START);
+				  
+	printf ("register usage by cycle\n");
+	printf ("%10s%10s\n","cycle","usage");
+	for (int i=0;i<num_cycles;i++) {
+		printf ("%10d%10d\n",i,myregistertable.register_usage_by_cycle[i]);
+	}
 }
 
 void schedule (node *layers[],int num_layers,int num_inputs,int num_outputs) {

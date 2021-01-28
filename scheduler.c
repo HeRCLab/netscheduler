@@ -269,10 +269,17 @@ void solve_schedule (node **layers,
 	
 	// generate output filename
 	sscanf(filename,"%[^.]",filename_prefix);
-	snprintf(output_filename,1024,"%s.out",filename_prefix);
+	snprintf(output_filename,1024,"%s.sol",filename_prefix);
 	
 	// run the solver
+#ifdef USE_GUROBI
+	snprintf(shell_command,1024,"GUROBI_PATH=\"%s\" LD_LIBRARY_PATH=\"%s/lib\" "
+								"%s/bin/gurobi_cl ResultFile=%s %s",
+								GUROBI_PATH,GUROBI_PATH,GUROBI_PATH,
+								output_filename,filename);
+#else
 	snprintf(shell_command,1024,"glpsol --binarize --tmlim 36000 --lp %s -o %s",filename,output_filename);
+#endif
 	ret = system(shell_command);
 	if (ret==-1) {
 		snprintf(str,1024,"Error running \"%s\"",shell_command);
@@ -282,7 +289,11 @@ void solve_schedule (node **layers,
 	
 	// read the output (assuming for now that it is solvable
 	// TODO: check for "unsolvable" output
+#ifdef USE_GUROBI
+	snprintf(shell_command,1024,"awk '$1 ~ /n_[0-9]+_c_[0-9]+/ {if ($2==1) print $1}' %s",output_filename);
+#else
 	snprintf(shell_command,1024,"awk '$2 ~ /n_[0-9]+_c_[0-9]+/ {if ($4==1) print $2}' %s",output_filename);
+#endif
 	myFile = popen(shell_command,"r");
 	if (!myFile) {
 		snprintf(str,1024,"Error running \"%s\"",shell_command);

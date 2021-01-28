@@ -225,7 +225,7 @@ void clear_flags (node *mynode,void *args) {
 void compute_functional_utilization(node **layers,int num_layers,int num_inputs,int num_outputs,argstype *myargs) {
 	
 	// assume this is a safe way to find the maximum possible latency
-	int max_latency = layers[num_layers-1]->alap_cycle+1;
+	int max_latency = layers[num_layers-1]->alap_cycle;
 	
 	// allocate and initialize function unit usage counters
 	myargs->add_use = (int *)malloc(sizeof(int) * max_latency);
@@ -266,7 +266,7 @@ void count_registers (node *mynode,void *args) {
 			
 			if (myedge->edge->scheduled_cycle > end_cycle) end_cycle = myedge->edge->scheduled_cycle;
 			
-			printf("%d -> %d cycles %d to %d\n",mynode->id,myedge->edge->id,start_cycle,end_cycle);
+			//printf("%d -> %d cycles %d to %d\n",mynode->id,myedge->edge->id,start_cycle,end_cycle);
 			
 			myedge = myedge->next;
 		}

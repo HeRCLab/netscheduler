@@ -195,7 +195,11 @@ node **create_basic_network_dag (int num_layers,int num_inputs,int hidden_size) 
 	for (int i=0;i<num_layers;i++) layers[i]=0;
 
 	id=add_layer(layers,0,id,-1,num_inputs,INPUT_LAYER);
+#ifdef BINARY_ADDER
 	id=add_layer(layers,1,id,num_inputs,hidden_size,NEURON_BINARY_ADD_LAYER);
+#else
+	id=add_layer(layers,1,id,num_inputs,hidden_size,NEURON_LAYER);
+#endif
 	id=add_layer(layers,2,id,hidden_size,1,NEURON_BINARY_ADD_LAYER);
 	id=add_layer(layers,3,id,1,1,OUTPUT_LAYER);
 

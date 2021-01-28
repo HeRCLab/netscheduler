@@ -272,7 +272,7 @@ void solve_schedule (node **layers,
 	snprintf(output_filename,1024,"%s.out",filename_prefix);
 	
 	// run the solver
-	snprintf(shell_command,1024,"glpsol --binarize --tmlim 600 --lp %s -o %s",filename,output_filename);
+	snprintf(shell_command,1024,"glpsol --binarize --tmlim 36000 --lp %s -o %s",filename,output_filename);
 	ret = system(shell_command);
 	if (ret==-1) {
 		snprintf(str,1024,"Error running \"%s\"",shell_command);
@@ -325,10 +325,10 @@ void incr_utilization (node *mynode,void *args) {
 
 void tabulate_functional_unit_utilization (node *layers[],int num_layers,int num_inputs,int num_outputs) {
 	// find scheduled latency
-	int max_cycle = layers[num_layers-1]->scheduled_cycle+1;
+	int max_cycle = layers[num_layers-1]->scheduled_cycle;
 	
 	// check if the scheduled succeeded
-	if (max_cycle==0) return;
+	if (max_cycle<=0) return;
 	
 	// allocate and initialize tables
 	int *adder_utilization = (int *)malloc(sizeof(int)*max_cycle);
@@ -367,7 +367,19 @@ void tabulate_functional_unit_utilization (node *layers[],int num_layers,int num
 	
 	for (int i=0;i<max_cycle;i++)
 		printf ("%10d%12d%12d\n",i,multiplier_utilization[i],adder_utilization[i]);
+
+	int total_adds = 0;
+	int total_mults = 0;
+	for (int i=0;i<max_cycle;i++) {
+		total_adds += adder_utilization[i];
+		total_mults += multiplier_utilization[i];
+	}
 	
+	int add_slots = max_cycle*NUM_ADDERS;
+	printf ("total adds = %d, total slots %d, utilization = %0.0f%%\n",total_adds,add_slots,(float)total_adds/(float)add_slots*100.f);
+	int mult_slots = max_cycle*NUM_MULTIPLIERS;
+	printf ("total mults = %d, total slots %d, utilization = %0.0f%%\n",total_mults,mult_slots,(float)total_mults/(float)mult_slots*100.f);
+
 	free(adder_utilization);
 	free(multiplier_utilization);
 }

@@ -34,5 +34,8 @@ int main () {
 	// compute register usage by cycle
 	tabulate_registers (layers,NUM_LAYERS,NUM_INPUTS,NUM_OUTPUTS);
 	
+	// print out vector program
+	tabulate_schedule_by_cycle (layers,NUM_LAYERS,NUM_INPUTS,NUM_OUTPUTS);
+		
 	return 0;
 }

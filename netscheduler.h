@@ -11,20 +11,20 @@
 
 // MLP topology
 #define	NUM_LAYERS			4  // input+hidden+output+1
-#define NUM_INPUTS			10
-#define HIDDEN_LAYER_SIZE	10
+#define NUM_INPUTS			3
+#define HIDDEN_LAYER_SIZE	3
 #define NUM_OUTPUTS			1
 
 // memory allocation for BFS
 #define QUEUESIZE			1024
 
 // resource constraints
-#define NUM_ADDERS			7
-#define NUM_MULTIPLIERS		8
+#define NUM_ADDERS			4
+#define NUM_MULTIPLIERS		4
 
 // define overall latency constraint
 // (max cycles beyond lower bound)
-#define SLACK				7
+#define SLACK				5
 
 // maximum iteration interval (actually the variation, so 0 means all inputs are consumed immediately)
 #define MAX_II				0
@@ -98,6 +98,11 @@ typedef struct {
 	int *mult_scheduled_utilization;
 } argstype;
 
+typedef struct {
+	node_type type;
+	int cycle;
+} func_cycle;
+
 // type for traversal order
 typedef enum {
 	FROM_START,FROM_END
@@ -140,5 +145,6 @@ void solve_schedule (node **layers,
 						char *filename);
 void tabulate_functional_unit_utilization (node *layers[],int num_layers,int num_inputs,int num_outputs);
 void tabulate_registers (node *layers[],int num_layers,int num_inputs,int num_outputs);
+void tabulate_schedule_by_cycle (node *layers[],int num_layers,int num_inputs,int num_outputs);
 
 #endif

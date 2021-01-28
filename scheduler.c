@@ -383,3 +383,98 @@ void tabulate_functional_unit_utilization (node *layers[],int num_layers,int num
 	free(adder_utilization);
 	free(multiplier_utilization);
 }
+
+void printinst (node *mynode,void *myargs) {
+	func_cycle *myarg = (func_cycle *)myargs;
+	
+	if (!mynode->flag) {
+		
+		if ((mynode->scheduled_cycle==myarg->cycle) && (mynode->type==myarg->type)) {
+			char str[1024];
+			if (mynode->type==ADD) {
+				snprintf(str,1024,"%s %d %d %d",NODETYPE(mynode->type),
+												mynode->id,
+												mynode->in_edges->edge->id,
+												mynode->in_edges->next->edge->id);
+												
+			} else if (mynode->type==MULT) {
+				snprintf(str,1024,"%s %d %d coeff",NODETYPE(mynode->type),
+												mynode->id,
+												mynode->in_edges->edge->id);
+												
+			} else if (mynode->type==INPUT) {
+				snprintf(str,1024,"load %d",mynode->id);
+			} else if (mynode->type==OUTPUT) {
+				snprintf(str,1024,"store %d",mynode->in_edges->edge->id);
+			}
+			printf ("%20s",str);
+		}
+	
+		mynode->flag=1;
+	}
+}
+
+void tabulate_schedule_by_cycle (node *layers[],int num_layers,int num_inputs,int num_outputs) {
+	int num_cycles = layers[num_layers-1]->scheduled_cycle;
+	func_cycle myarg;
+	
+	// print table headers
+	printf ("%6s","cycle");
+	for (int i=0;i<NUM_ADDERS;i++) {
+		char str[1024];
+		snprintf(str,1024,"adder%d",i);
+		printf("%20s",str);
+	}
+	for (int i=0;i<NUM_MULTIPLIERS;i++) {
+		char str[1024];
+		snprintf(str,1024,"mult%d",i);
+		printf("%20s",str);
+	}
+	printf ("\n");
+	for (int i=0;i<num_cycles;i++) {
+		printf ("%6d",i);
+	
+		myarg.cycle=i;
+		myarg.type=ADD;
+	
+		// clear flags
+		traverse_dag (layers,
+				  num_layers,
+				  num_inputs,
+				  num_outputs,
+				  (void *)&myarg,
+				  clear_flags,
+				  FROM_START);
+				  
+		// count
+		traverse_dag (layers,
+				  num_layers,
+				  num_inputs,
+				  num_outputs,
+				  (void *)&myarg,
+				  printinst,
+				  FROM_START);
+				  
+		myarg.type=MULT;
+	
+		// clear flags
+		traverse_dag (layers,
+				  num_layers,
+				  num_inputs,
+				  num_outputs,
+				  (void *)&myarg,
+				  clear_flags,
+				  FROM_START);
+				  
+		// count
+		traverse_dag (layers,
+				  num_layers,
+				  num_inputs,
+				  num_outputs,
+				  (void *)&myarg,
+				  printinst,
+				  FROM_START);
+				  
+		printf ("\n");
+	}
+}

@@ -8,14 +8,14 @@
 // Runtime parameters
 
 #define BINARY_ADDER
-//#define	USE_GUROBI
+#define	USE_GUROBI
 
 #define GUROBI_PATH			"/home/csce611/gurobi911/linux64"
 
 // MLP topology
 #define	NUM_LAYERS			4  // input+hidden+output+1
-#define NUM_INPUTS			10
-#define HIDDEN_LAYER_SIZE	10
+#define NUM_INPUTS			14
+#define HIDDEN_LAYER_SIZE	14
 #define NUM_OUTPUTS			1
 
 // memory allocation for BFS
@@ -27,7 +27,7 @@
 
 // define overall latency constraint
 // (max cycles beyond lower bound)
-#define SLACK				15
+#define SLACK				25
 
 // maximum iteration interval (actually the variation, so 0 means all inputs are consumed immediately)
 #define MAX_II				0

@@ -408,6 +408,7 @@ void printinst (node *mynode,void *myargs) {
 				snprintf(str,1024,"store %d",mynode->in_edges->edge->id);
 			}
 			printf ("%20s",str);
+			myarg->found++;
 		}
 	
 		mynode->flag=1;
@@ -436,6 +437,7 @@ void tabulate_schedule_by_cycle (node *layers[],int num_layers,int num_inputs,in
 	
 		myarg.cycle=i;
 		myarg.type=ADD;
+		myarg.found=0;
 	
 		// clear flags
 		traverse_dag (layers,
@@ -454,8 +456,14 @@ void tabulate_schedule_by_cycle (node *layers[],int num_layers,int num_inputs,in
 				  (void *)&myarg,
 				  printinst,
 				  FROM_START);
+		
+		int blank_slots = NUM_ADDERS-myarg.found;
+		for (int j=0;j<blank_slots;j++) {
+			printf("%20s","");
+		}
 				  
 		myarg.type=MULT;
+		myarg.found=0;
 	
 		// clear flags
 		traverse_dag (layers,

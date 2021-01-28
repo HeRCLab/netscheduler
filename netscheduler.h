@@ -101,6 +101,7 @@ typedef struct {
 typedef struct {
 	node_type type;
 	int cycle;
+	int found;
 } func_cycle;
 
 // type for traversal order

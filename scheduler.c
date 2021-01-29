@@ -418,7 +418,7 @@ void printinst (node *mynode,void *myargs) {
 			} else if (mynode->type==OUTPUT) {
 				snprintf(str,1024,"store %d",mynode->in_edges->edge->id);
 			}
-			printf ("%20s",str);
+			printf ("\"%s\",",str);
 			myarg->found++;
 		}
 	
@@ -431,20 +431,20 @@ void tabulate_schedule_by_cycle (node *layers[],int num_layers,int num_inputs,in
 	func_cycle myarg;
 	
 	// print table headers
-	printf ("%6s","cycle");
+	printf ("\"%s\",","cycle");
 	for (int i=0;i<NUM_ADDERS;i++) {
 		char str[1024];
-		snprintf(str,1024,"adder%d",i);
-		printf("%20s",str);
+		snprintf(str,1024,"\"adder%d\",",i);
+		printf("%s",str);
 	}
 	for (int i=0;i<NUM_MULTIPLIERS;i++) {
 		char str[1024];
-		snprintf(str,1024,"mult%d",i);
-		printf("%20s",str);
+		snprintf(str,1024,"\"mult%d\",",i);
+		printf("%s",str);
 	}
 	printf ("\n");
 	for (int i=0;i<num_cycles;i++) {
-		printf ("%6d",i);
+		printf ("\"%d\",",i);
 	
 		myarg.cycle=i;
 		myarg.type=ADD;
@@ -470,7 +470,7 @@ void tabulate_schedule_by_cycle (node *layers[],int num_layers,int num_inputs,in
 		
 		int blank_slots = NUM_ADDERS-myarg.found;
 		for (int j=0;j<blank_slots;j++) {
-			printf("%20s","");
+			printf("\"%s\",","");
 		}
 				  
 		myarg.type=MULT;
@@ -494,6 +494,11 @@ void tabulate_schedule_by_cycle (node *layers[],int num_layers,int num_inputs,in
 				  printinst,
 				  FROM_START);
 				  
+		blank_slots = NUM_ADDERS-myarg.found;
+		for (int j=0;j<blank_slots;j++) {
+			printf("\"%s\",","");
+		}
+
 		printf ("\n");
 	}
 }

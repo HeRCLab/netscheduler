@@ -14,16 +14,16 @@
 
 // MLP topology
 #define	NUM_LAYERS			4  // input+hidden+output+1
-#define NUM_INPUTS			14
-#define HIDDEN_LAYER_SIZE	14
+#define NUM_INPUTS			4
+#define HIDDEN_LAYER_SIZE	4
 #define NUM_OUTPUTS			1
 
 // memory allocation for BFS
 #define QUEUESIZE			1024
 
 // resource constraints
-#define NUM_ADDERS			8
-#define NUM_MULTIPLIERS		8
+#define NUM_ADDERS			4
+#define NUM_MULTIPLIERS		4
 
 // define overall latency constraint
 // (max cycles beyond lower bound)

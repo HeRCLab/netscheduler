@@ -1,7 +1,7 @@
 # schedextract - tool for extracting scheduling data from AEMF files
 
-This tool operates on `.adb` files produced by Xilinx Vivado HLS. Usually, this
-will be something like `projectname/solution1/.autopilot/db/mynetwork.adb`.
+This tool operates on `.aemf` files produced by Xilinx Vivado HLS. Usually, this
+will be something like `projectname/solution1/.autopilot/db/mynetwork.aemf`.
 
 For now, this tool outputs GEXF files, which are representations of the
 extracted scheduling graphs. GEXF files can be visualized using

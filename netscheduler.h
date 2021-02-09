@@ -8,9 +8,10 @@
 // Runtime parameters
 
 #define BINARY_ADDER
-#define	USE_GUROBI
+/* #define	USE_GUROBI */
 
-#define GUROBI_PATH			"/home/csce611/gurobi911/linux64"
+/* #define GUROBI_PATH			"/home/csce611/gurobi911/linux64" */
+#define GUROBI_PATH			"/usr/sbin"
 
 // MLP topology
 #define	NUM_LAYERS			4  // input+hidden+output+1
@@ -22,12 +23,12 @@
 #define QUEUESIZE			1024
 
 // resource constraints
-#define NUM_ADDERS			4
-#define NUM_MULTIPLIERS		4
+#define NUM_ADDERS			8
+#define NUM_MULTIPLIERS		8
 
 // define overall latency constraint
 // (max cycles beyond lower bound)
-#define SLACK				25
+#define SLACK				50
 
 // maximum iteration interval (actually the variation, so 0 means all inputs are consumed immediately)
 #define MAX_II				0

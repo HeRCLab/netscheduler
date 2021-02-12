@@ -375,7 +375,7 @@ void solve_schedule (node **layers,
 	// run the solver
 #ifdef USE_GUROBI
 	snprintf(shell_command,1024,"GUROBI_PATH=\"%s\" LD_LIBRARY_PATH=\"%s/lib\" "
-								"%s/bin/gurobi_cl ResultFile=%s %s",
+								"%s/gurobi_cl ResultFile=%s %s",
 								GUROBI_PATH,GUROBI_PATH,GUROBI_PATH,
 								output_filename,filename);
 #else

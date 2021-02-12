@@ -11,6 +11,8 @@ def main():
 
     parser.add_argument("--gexf", "-g", default=None, type=pathlib.Path, help="If specified, dump read data to GEXF formatted graph file.")
 
+    parser.add_argument("--gantt", "-G", default=None, type=pathlib.Path, help="If specified, dump the read schedule to a graphical Gannt chart saved to this file.")
+
     args = parser.parse_args()
 
     tree = None
@@ -171,6 +173,50 @@ def main():
 
     if args.gexf is not None:
         nx.write_gexf(G, str(args.gexf))
+
+
+    schedule_items = []
+    for node in G.nodes(data=True):
+        attr = node[1]
+        if "name" in node[1]:
+            schedule_items.append( (float(attr["m_delay"]), attr["name"]) )
+
+    schedule_items = list(reversed(list(sorted(schedule_items))))
+
+    if args.gantt is not None:
+        # https://www.geeksforgeeks.org/python-basic-gantt-chart-using-matplotlib/
+
+        import matplotlib.pyplot as plt
+
+        plt.tight_layout()
+
+        fig, gnt = plt.subplots()
+        fig.set_size_inches(18.5, 10.5, forward=True)
+
+
+        # Setting labels for x-axis and y-axis
+        gnt.set_xlabel('clock cycle')
+        gnt.set_ylabel('operation')
+
+        rowheight = 50
+        barheight = rowheight/2
+
+        gnt.set_yticks([rowheight * i for i in range(len(schedule_items))])
+        gnt.set_yticklabels([item[1] for item in schedule_items])
+
+        # Setting graph attribute
+        gnt.grid(True)
+
+        index = 0
+        for item in schedule_items:
+            print(item, index)
+            gnt.broken_barh([(item[0],1.0)], (index*rowheight - barheight/2, barheight))
+            index += 1
+
+
+        plt.savefig(str(args.gantt), bbox_inches = "tight")
+
+
 
 if __name__ == "__main__":
     main()

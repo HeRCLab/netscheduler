@@ -11,7 +11,8 @@
 #define	USE_GUROBI
 //#define VECTORIZE
 
-#define GUROBI_PATH			"/home/csce611/gurobi911/linux64"
+/* #define GUROBI_PATH			"/home/csce611/gurobi911/linux64" */
+#define GUROBI_PATH			"/usr/sbin"
 
 // MLP topology
 #define	NUM_LAYERS			4  // input+hidden+output+1

@@ -108,6 +108,68 @@ void emit_start_and_dependency_constraints (node *mynode,void *args) {
 	}
 }
 
+void emit_op_constraints (node *mynode,void *args) {
+	argstype *myargs = (argstype *)args;
+
+	if (myargs->cycle >= mynode->asap_cycle && myargs->cycle <= mynode->alap_cycle) {
+		myargs->flag=1;
+
+		if (mynode->type==MULT) fprintf (myargs->file,"- %d n_%d_c_%d ",
+												myargs->cycle,
+												mynode->id,
+												myargs->cycle);
+
+		if (mynode->type==ADD) fprintf (myargs->file,"+ %d n_%d_c_%d ",
+												myargs->cycle,
+												mynode->id,
+												myargs->cycle);
+	}
+}
+
+void emit_vector_constraints (node *mynode,void *args) {
+
+	if (!mynode->flag) {
+		FILE *myFile = ((argstype *)args)->file;
+
+		fprintf (myFile,"\\ vector constraints\n");
+
+		int min_asap = 1000;
+		int max_alap = 0;
+		int num_inputs = 0;
+
+		// NOTE: this only works for 0 to 2 predecessor nodes
+		edge *myedge = mynode->in_edges;
+		while (myedge) {
+			node *in_node = myedge->edge;
+
+			if (in_node->asap_cycle < min_asap) {
+				min_asap = in_node->asap_cycle;
+			}
+			if (in_node->alap_cycle > max_alap) {
+				max_alap = in_node->alap_cycle;
+			}
+			num_inputs++;
+			myedge = myedge->next;
+		}
+
+		if (num_inputs==2) {
+			// don't allow the predecessors to complete at the same time, since this will put the
+			// results into the same vector element
+
+			for (int i=min_asap;i<=max_alap;i++) {
+				int first_pred_id = mynode->in_edges->edge->id;
+				int second_pred_id = mynode->in_edges->next->edge->id;
+
+				if (i!=min_asap) fprintf(myFile,"+ ");
+				fprintf(myFile,"%d n_%d_c_%d - %d n_%d_c_%d ",i,first_pred_id,i,i,second_pred_id,i);
+			}
+			fprintf(myFile,"< 0\n");
+		}
+
+		mynode->flag=1;
+	}
+}
+
 void generate_declarations (node *mynode,void *args) {
 	argstype *myargs = (argstype *)args;
 	FILE *myFile = myargs->file;
@@ -216,6 +278,45 @@ void generate_ilp_file (node **layers,
 		}
 	}
 	
+#ifdef VECTORIZE
+		// clear flags
+		traverse_dag (layers,
+				  num_layers,
+				  num_inputs,
+				  num_outputs,
+				  (void *)myargs,
+				  clear_flags,
+				  FROM_START);
+		
+		// set constraints for adders
+		myargs->type=ADD;
+		myargs->first=1;
+		traverse_dag (layers,
+					  num_layers,
+					  num_inputs,
+					  num_outputs,
+					  (void *)myargs,
+					  emit_vector_constraints,
+					  FROM_START);
+
+		fprintf(myFile,"\\ operation constraints for vector unit\n");
+		for (int i=0;i<=last_cycle;i++) {
+			myargs->cycle = i;
+			myargs->flag = 0;
+
+			traverse_dag (layers,
+					  num_layers,
+					  num_inputs,
+					  num_outputs,
+					  (void *)myargs,
+					  emit_op_constraints,
+					  FROM_START);
+
+			if (myargs->flag) fprintf(myFile," > 0\n");
+			
+		}
+#endif
+
 	// add declarations
 	fprintf (myFile,"\n\\ declarations\n");
 	fprintf (myFile,"\ninteger\n\n");
@@ -235,7 +336,7 @@ void generate_ilp_file (node **layers,
 				  (void *)myargs,
 				  generate_declarations,
 				  FROM_START);
-	
+
 	fprintf (myFile,"\nend\n");
 	
 	fclose(myFile);

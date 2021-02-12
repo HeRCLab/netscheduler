@@ -9,25 +9,26 @@
 
 #define BINARY_ADDER
 #define	USE_GUROBI
+//#define VECTORIZE
 
 #define GUROBI_PATH			"/home/csce611/gurobi911/linux64"
 
 // MLP topology
 #define	NUM_LAYERS			4  // input+hidden+output+1
-#define NUM_INPUTS			4
-#define HIDDEN_LAYER_SIZE	4
+#define NUM_INPUTS			3
+#define HIDDEN_LAYER_SIZE	3
 #define NUM_OUTPUTS			1
 
 // memory allocation for BFS
 #define QUEUESIZE			1024
 
 // resource constraints
-#define NUM_ADDERS			4
-#define NUM_MULTIPLIERS		4
+#define NUM_ADDERS			2
+#define NUM_MULTIPLIERS		1
 
 // define overall latency constraint
 // (max cycles beyond lower bound)
-#define SLACK				25
+#define SLACK				20
 
 // maximum iteration interval (actually the variation, so 0 means all inputs are consumed immediately)
 #define MAX_II				0
@@ -99,6 +100,7 @@ typedef struct {
 	int *mult_use;
 	int *add_scheduled_utilization;
 	int *mult_scheduled_utilization;
+	int flag;
 } argstype;
 
 typedef struct {

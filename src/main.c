@@ -17,12 +17,11 @@ int generate_main(int argc, const char** argv) {
 	int hidden_size = HIDDEN_LAYER_SIZE;
 	int num_inputs = NUM_INPUTS;
 	int num_outputs = NUM_OUTPUTS;
-	char* output_file = NULL;
 
 	struct argparse_option options[] = {
 		OPT_HELP(),
 		OPT_INTEGER('l', "layers", &num_layers, "Number of hidden layers in the MLP (default: "STR(NUM_LAYERS)")", NULL, 0, 0),
-		OPT_INTEGER('h', "hidden_size", &hidden_size, "Number of nodes in the hidden layer(s) (default: "STR(HIDDEN_LAYER_SIZE)")", NULL, 0, 0),
+		OPT_INTEGER('H', "hidden_size", &hidden_size, "Number of nodes in the hidden layer(s) (default: "STR(HIDDEN_LAYER_SIZE)")", NULL, 0, 0),
 		OPT_INTEGER('I', "inputs", &num_inputs, "Number of inputs to the MLP (default:"STR(NUM_INPUTS)")", NULL, 0, 0),
 		OPT_INTEGER('O', "outputs", &num_outputs, "Number of outputs to the MLP (default:"STR(NUM_OUTPUTS)")", NULL, 0, 0),
 		OPT_END(),

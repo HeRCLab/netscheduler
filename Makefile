@@ -1,13 +1,14 @@
 CC             ?= gcc
-CFLAGS         ?= -g -Wno-format-truncation -Wextra -Wall -Wpedantic -std=gnu11
+CFLAGS          = -g -Wno-format-truncation -Wextra -Wall -Wpedantic -std=gnu11 $(shell libherc-config --cflags)
 SOURCES         = $(wildcard src/*.c)
 OBJECTS         = $(patsubst %.c,%.o,$(SOURCES))
 HEADERS         = $(wildcard src/*.h)
-LDFLAGS        ?=
+LDFLAGS         = $(shell libherc-config --libs)
 
 # Use make LIBHERC_CONFIG=/some/path/to/libherc-config if your installation
 # does not have it placed in PATH.
 LIBHERC_CONFIG ?= libherc-config
+
 
 all: schednet
 .PHONY: all

@@ -14,6 +14,12 @@
 /* #define GUROBI_PATH			"/home/csce611/gurobi911/linux64" */
 #define GUROBI_PATH			"/usr/sbin"
 
+/* NOTE: I am in the process of migrating these to be the default values for
+ * arguments processed using argparse.h.
+ *
+ * -- Charles
+ */
+
 // MLP topology
 #define	NUM_LAYERS			4  // input+hidden+output+1
 #define NUM_INPUTS			3
@@ -127,7 +133,7 @@ void gen_c_code (node **layers,
 						int num_inputs,
 						int hidden_layer_size,
 						int num_outputs,
-						char *filename);
+						const char *filename);
 void compute_functional_utilization(node **layers,int num_layers,int num_inputs,int num_outputs,argstype *myargs);
 void inc_functional_utilization (node *mynode,void *args);
 

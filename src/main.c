@@ -1,6 +1,85 @@
 #include "netscheduler.h"
 
-int main () {
+#include <herc/argparse.h>
+
+#define STR_IMPL_(x) #x      
+#define STR(x) STR_IMPL_(x)
+
+
+int generate_main(int argc, const char** argv) {
+	const char* const usages[] = {
+		"schednet generate [options] OUTPUT_FILE",
+		"schednet generate [options]",
+		NULL,
+	};
+
+	int num_layers = NUM_LAYERS;
+	int hidden_size = HIDDEN_LAYER_SIZE;
+	int num_inputs = NUM_INPUTS;
+	int num_outputs = NUM_OUTPUTS;
+	char* output_file = NULL;
+
+	struct argparse_option options[] = {
+		OPT_HELP(),
+		OPT_INTEGER('l', "layers", &num_layers, "Number of hidden layers in the MLP (default: "STR(NUM_LAYERS)")", NULL, 0, 0),
+		OPT_INTEGER('h', "hidden_size", &hidden_size, "Number of nodes in the hidden layer(s) (default: "STR(HIDDEN_LAYER_SIZE)")", NULL, 0, 0),
+		OPT_INTEGER('I', "inputs", &num_inputs, "Number of inputs to the MLP (default:"STR(NUM_INPUTS)")", NULL, 0, 0),
+		OPT_INTEGER('O', "outputs", &num_outputs, "Number of outputs to the MLP (default:"STR(NUM_OUTPUTS)")", NULL, 0, 0),
+		OPT_END(),
+	};
+
+	struct argparse argparse;
+	argparse_init(&argparse, options, usages, 0);
+
+	argparse_describe(&argparse, "\nGenerates C code implementing various MLP neural-network related functions based on provided parameters.", "");
+	argc = argparse_parse(&argparse, argc, argv);
+
+	node **layers;
+	layers = create_basic_network_dag(num_layers, num_inputs, hidden_size);
+	gen_c_code(layers,
+			num_layers,
+			num_inputs,
+			hidden_size,
+			num_outputs,
+			(argc > 0) ? argv[0] : "/dev/stdout"
+	);
+
+	return 0;
+}
+
+void usage(void) {
+	fprintf(stderr, "schednet COMMAND [command arguments... ]\n");
+	fprintf(stderr, "\nAvailable commands:\n");
+	fprintf(stderr, "\tgenerate - code generation utilities\n");
+	fprintf(stderr, "\tgen      - alias for generate\n");
+	fprintf(stderr, "\nUse schednet COMMAND --help for more information on a specific command.\n");
+}
+
+int main (int argc, const char** argv) {
+	if (argc < 2) { usage(); exit(1); }
+
+	/* Don't bother doing real argument parsing at this stage, since we
+	 * will either call into a subcommand or else show help and then exit.
+	 */
+	if ((strncmp(argv[1], "help", 4) == 0) || 
+	    (strncmp(argv[1], "--help", 6) == 0) ||
+	    (strncmp(argv[1], "-help", 5) == 0) ||
+	    (strncmp(argv[1], "-h", 2) == 0)) {
+		usage();
+		exit(0);
+	}
+
+	/* Expand aliases */
+	if (strncmp(argv[1], "gen", 3) == 0) { argv[1] = "generate"; }
+
+	if (strncmp(argv[1], "generate", 8) == 0) {
+		return generate_main(argc - 1, &(argv[1]));
+	}
+
+	exit(0);
+
+	/* dead code - needs to be cleaned up and put inside of subcommands */
+
 	node **layers;
 	argstype myargs;
 	
@@ -39,3 +118,4 @@ int main () {
 		
 	return 0;
 }
+

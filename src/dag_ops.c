@@ -316,7 +316,7 @@ void gen_c_code (node **layers,
 						int num_inputs,
 						int hidden_layer_size,
 						int num_outputs,
-						char *filename) {
+						const char *filename) {
 							
 	FILE *myFile = fopen(filename,"w+");
 	char str[1024];

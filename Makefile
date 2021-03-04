@@ -27,7 +27,7 @@ src/%.o: src/%.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 schednet: $(OBJECTS)
-	$(CC) $(LDFLAGS) -o $@ $^
+	$(CC) -o $@ $^ $(LDFLAGS)
 
 clean:
 	rm -f schednet $(OBJECTS)

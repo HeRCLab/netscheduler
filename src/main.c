@@ -43,6 +43,15 @@ int generate_main(int argc, const char** argv) {
 			(argc > 0) ? argv[0] : "/dev/stdout"
 	);
 
+	gen_backwards_pass(layers,
+			num_layers,
+			num_inputs,
+			hidden_size,
+			num_outputs,
+			(argc > 0) ? argv[0] : "/dev/stdout"
+	);
+
+
 	return 0;
 }
 

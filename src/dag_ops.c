@@ -373,3 +373,99 @@ void gen_c_code (node **layers,
 	
 	fclose(myFile);
 }
+
+/**
+ * @brief Performs the backwards pass for the MLP network.
+ *
+ * @param layers
+ * @param num_layers
+ * @param num_inputs
+ * @param hidden_layer_size
+ * @param num_outputs
+ * @param filename
+ */
+void gen_backwards_pass(node **layers,
+						int num_layers,
+						int num_inputs,
+						int hidden_layer_size,
+						int num_outputs,
+						const char *filename) {
+
+	FILE *myFile = fopen(filename,"w+");
+	char str[1024];
+	
+	fprintf(myFile,"void mynetwork_backwards (");
+
+	// print input arguments
+	node *mynode = layers[0];
+	for (int i=0;i<num_inputs;i++) {
+		fprintf(myFile,"const float input%d[1024]",mynode->id);
+		fprintf(myFile,",");
+		mynode = mynode->next;
+	}
+	
+	// print output arguments
+	mynode = layers[num_layers-1];
+	for (int i=0;i<num_outputs;i++) {
+		fprintf(myFile,"float output%d[1024]",mynode->in_edges->edge->id);
+		if (i!=num_outputs-1) fprintf(myFile,",");
+		mynode = mynode->next;
+	}
+
+	fprintf(myFile,") {\n");
+	
+	if (!myFile) {
+		snprintf (str,1024,"ERROR: opening \"%s\" for write",filename);
+		perror(str);
+		exit(1);
+	}
+
+	argstype myargs = {.file = myFile};
+
+	// clear to flags, so we declare each variable only once
+	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,clear_flags,FROM_START);
+	
+	// generate the intermediate value declarations
+	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,gen_c_declarations,FROM_START);
+	
+	// add the coefficient array
+	fprintf(myFile,"coeff1[%d][%d],coeff2[%d][%d];\n",hidden_layer_size,num_inputs,num_outputs,hidden_layer_size);
+	fprintf(myFile,"\n");
+
+	/* generate the delta array, we need one matrix for each hidden layer,
+	 * and for the output layer */
+	fprintf(myFile, "delta%d[%d]; /* deltas for output layer */\n", num_layers, num_outputs);
+
+	for (int layerno = 0 ; layerno < num_layers; layerno++) {
+		fprintf(myFile, "delta%d[%d]; /* deltas for layer %d */\n", layerno, hidden_layer_size, layerno);
+	}
+
+	fprintf(myFile,"\tfor (int i=0;i<1024;i++) {\n#pragma HLS LATENCY max=1\n");
+
+	/* Populate the final delta array for the output layer - note that
+	 * because we currently only support linear MLPs, g'() is 1 for any
+	 * input, leaving us with just the y_j - a_j term. */
+	fprintf(myFile, "\t\t/* back-propagation for output layer */\n");
+	for (int i = 0 ; i < num_outputs ; i++) {
+		fprintf(myFile, "\t\tdelta%d[%d] = input[i] - node%d;\n", num_layers, i, layers[num_layers-1][i].id);
+	}
+
+	fprintf(myFile, "\t\t/* back-propagation for hidden layers */\n");
+	for (int layerno = 0 ; layerno < num_layers; layerno++) {
+		fprintf(myFile, "\t\t/* layer %d */\n", layerno);
+		fprintf(myFile, "\t\tdelta%d[%d] = 0;\n");
+		for (int i = 0; i < hidden_layer_size ; i++) {
+			for (int j = 0; j < ((i == num_layers-2) ? num_outputs : hidden_layer_size) ; j++) {
+				fprintf(myFile, "\t\tdelta%d[%d] += coeff%d[%d][%d] * delta%d[%d];\n",
+						layerno, i, layerno, i, j, layerno+1, j);
+			}
+		}
+	}
+
+	fprintf(myFile,"\t}\n");
+	
+	fprintf(myFile,"}\n");
+	
+	fclose(myFile);
+
+}

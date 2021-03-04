@@ -134,6 +134,12 @@ void gen_c_code (node **layers,
 						int hidden_layer_size,
 						int num_outputs,
 						const char *filename);
+void gen_backwards_pass (node **layers,
+						int num_layers,
+						int num_inputs,
+						int hidden_layer_size,
+						int num_outputs,
+						const char *filename);
 void compute_functional_utilization(node **layers,int num_layers,int num_inputs,int num_outputs,argstype *myargs);
 void inc_functional_utilization (node *mynode,void *args);
 

@@ -1,8 +1,11 @@
 CC             ?= gcc
 CFLAGS          = -g -Wno-format-truncation -Wextra -Wall -Wpedantic -std=gnu11 $(shell libherc-config --cflags)
 SOURCES         = $(wildcard src/*.c)
+TEST_SOURCES    = $(wildcard src/test/*.c)
 OBJECTS         = $(patsubst %.c,%.o,$(SOURCES))
+TEST_OBJECTS    = $(patsubst %.c,%.o,$(TEST_SOURCES))
 HEADERS         = $(wildcard src/*.h)
+TEST_HEADERS     = $(wildcard src/test/*.h)
 LDFLAGS         = $(shell libherc-config --libs)
 
 # Use make LIBHERC_CONFIG=/some/path/to/libherc-config if your installation
@@ -30,9 +33,19 @@ libherc:
 src/%.o: src/%.c $(HEADERS) libherc
 	$(CC) $(CFLAGS) -c $< -o $@
 
+src/test/%.o: src/test/%.c $(HEADERS) $(TEST_HEADERS) libherc
+	$(CC) $(CFLAGS) -c $< -o $@
+
 schednet: $(OBJECTS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
+src/test/test_main: $(filter-out src/main.o,$(OBJECTS)) $(TEST_OBJECTS)
+	$(CC) -o $@ $^ $(LDFLAGS)
+
+test: src/test/test_main
+	valgrind --error-exitcode=1 --leak-check=full ./src/test/test_main
+.PHONY: test
+
 clean:
-	rm -f schednet $(OBJECTS)
+	rm -f schednet $(OBJECTS) $(TEST_OBJECTS) src/test/test_main
 .PHONY: clean

@@ -371,4 +371,59 @@ KHASH_MAP_INIT_INT64(dgraph_id2idlist, vec_dgraph_id)
  */
 #define dgraph_n_edges(name, g) dgraph_n_edges_##name(g)
 
+/* TODO: docs */
+#define dgraph_foreach_node(name, g, idvar, code) \
+	do { \
+		for(idvar=0 ; idvar < dgraph_n_nodes(name, g) ; idvar++) { \
+			code \
+		} \
+	} while(0)
+
+/* TODO: docs */
+#define dgraph_foreach_edge(name, g, idvar, code) \
+	do { \
+		for(idvar=0 ; idvar < dgraph_n_edges(name, g) ; idvar++) { \
+			code \
+		} \
+	} while(0)
+
+/**
+ * @brief iterate over nodes adjacent to a given node
+ *
+ * This method runs a given code block once for each node which has an in-edge
+ * with nodeid as the origin node. Put differently, this iterates over all
+ * successor nodes to the specified node ID. For example:
+ *
+ * dgraph_id id;
+ * dgraph_foreach_adjacent(sometype, g, 123, id, 
+ *     printf("traversed node %d adjacent to node %d\n", id, 123);
+ * );
+ *
+ * @param name the name of the graph type
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param nodeid the node ID which to find nodes adjacent to
+ * @param idvar a variable of type dgraph_id which will be overwritten each
+ *	iteration before the code block is run with the present node ID which
+ *	is adjacent to nodeid
+ * @param code is a block of C code to run in each iteration
+ */
+#define dgraph_foreach_adjacent(name, g, nodeid, idvar, code) \
+	do { \
+		vec_dgraph_id _eidvec; \
+		khint_t _k; \
+		_k = kh_get(dgraph_id2idlist, g->edges_by_source, nodeid); \
+		if (_k == kh_end(g->edges_by_source)) { break; } \
+		_eidvec = kh_value(g->edges_by_source, _k); \
+		int _unused_index; \
+		dgraph_id _eid; \
+		vec_foreach(&(_eidvec), _eid, _unused_index) { \
+			idvar = g->edge_sinks.data[_eid]; \
+			code \
+		} \
+	} while(0);
+
+
+
+
+
 #endif /* DGRAPH_H */

@@ -40,6 +40,19 @@ void test_simple(void) {
 	should_equal(dgraph_n_nodes(intgraph, g), 2);
 	should_equal(dgraph_n_edges(intgraph, g), 1);
 
+	/* check that adjacency works */
+	dgraph_foreach_adjacent(intgraph, g, 0, id,
+		/* Only node 1 is adjacent to node 0, this should run
+		 * exactly once. */
+		should_equal(id, 1);
+	);
+
+	dgraph_foreach_adjacent(intgraph, g, 1, id,
+		/* No nodes are adjacent to node 1, since the edge goes from
+		 * 0 to 1, so the body of this loop should never run. */
+		fail("this should not be reachable (id=%d)", id);
+	);
+
 	dgraph_destroy(intgraph, g);
 
 	printf("OK\n");

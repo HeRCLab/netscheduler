@@ -211,9 +211,9 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 			vec_push(&(kh_value(g->edges_by_sink, k)), *edgeid); \
 			return DGRAPH_ERROR_OK; \
 		} else { \
-			dgraph_id key, dummy; \
-			(void)(dummy); \
-			kh_foreach(g->deleted_edges, key, dummy, \
+			dgraph_id key; \
+			for (khint_t i = kh_begin(g->deleted_edges); i != kh_end(g->deleted_edges); ++i) { \
+				key = kh_key(g->deleted_edges, i); \
 				*edgeid = key; \
 				g->edges.data[key] = data; \
 				kh_del(dgraph_idset, g->deleted_edges, key); \
@@ -225,12 +225,14 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 				g->edge_sources.data[key] = source; \
 				g->edge_sinks.data[key] = sink; \
 				return DGRAPH_ERROR_OK; \
-			); \
+			} \
 		} \
 		return DGRAPH_ERROR_UNREACHABLE; \
 	} \
 	SCOPE dgraph_error dgraph_destroy_node_##name(dgraph_##name* g, dgraph_id id) { \
 		khint_t k; int r; \
+		if ((id < 0) || (id >= g->nodes.length)) { return DGRAPH_ERROR_OK; } \
+		if (! dgraph_node_exists_##name(g, id)) { return DGRAPH_ERROR_OK; } \
 		/* make sure we aren't a sink for any extant edge */ \
 		k = kh_get(dgraph_id2idlist, g->edges_by_sink, id); \
 		if (k != kh_end(g->edges_by_sink)) { \
@@ -259,16 +261,32 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 		} \
 		return DGRAPH_ERROR_OK; \
 	} \
-
-	/* TODO:
-	 * node deletion
-	 * edge deletion
-	 *	handle edge-by-source/sink data, remember this may have multiple
-	 *	entries and we only want to remove the one we just deleted, not all of them.
-	 *
-	 *	also blank out the source/sink data
-	 */
-
+	SCOPE dgraph_error dgraph_destroy_edge_##name(dgraph_##name* g, dgraph_id id) { \
+		if (! dgraph_edge_exists_##name(g, id)) { return DGRAPH_ERROR_OK; } \
+		if ((id < 0) || (id >= g->nodes.length)) { return DGRAPH_ERROR_OK; } \
+		khint_t k; int r; \
+		/* insert ourselves into the deleted ID set */ \
+		kh_put(dgraph_idset, g->deleted_edges, id, &r); \
+		if (r < 0) { return DGRAPH_ERROR_MALLOC_FAILED; } \
+		/* remove us from the list of edges by source */ \
+		dgraph_id source = g->edge_sources.data[id]; \
+		vec_dgraph_id* v; \
+		k = kh_get(dgraph_id2idlist, g->edges_by_source, source); \
+		if (k != kh_end(g->edges_by_source)) {  \
+			v = &kh_val(g->edges_by_source, k); \
+			vec_remove(v, id); \
+		} \
+		/* remove us from the list of edges by sink*/ \
+		dgraph_id sink = g->edge_sinks.data[id]; \
+		k = kh_get(dgraph_id2idlist, g->edges_by_sink, sink); \
+		if (k != kh_end(g->edges_by_sink)) {  \
+			v = &kh_val(g->edges_by_sink, k); \
+			vec_remove(v, id); \
+		} \
+		g->edge_sources.data[id] = -1; \
+		g->edge_sinks.data[id] = -1; \
+		return DGRAPH_ERROR_OK; \
+	} \
 
 /**** dgraph public API ******************************************************/
 
@@ -317,6 +335,12 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  * dgraph is capable of managing the complete lifecycle of a directed graph
  * from allocation to deallocation, however the programmer must manage the
  * lifecycle of any attached data.
+ *
+ * Nodes and edges can be dynamically deleted at runtime. When a node or edge
+ * is deleted, it's ID is stored in a hash set, which is tested against any
+ * time node or edge existence is checked. If another node or edge is created
+ * in the future, rather than allocating additional storage space, the space
+ * for the previously deleted node or edge can be "reclaimed".
  */
 
 /**
@@ -507,7 +531,8 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  * DGRAPH_ERROR_SOURCE, as appropriate.
  *
  * The caller must appropriately free any resources referenced by the node data
- * before calling this function.
+ * before calling this function. The node data is not modified by this
+ * function.
  *
  * @param name the name of the graph type
  * @param g dgraph_t(name)* pointing to a previously allocated graph
@@ -516,6 +541,24 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  * @return dgraph_error indicating the result of the operation
  */
 #define dgraph_destroy_node(name, g, id) dgraph_destroy_node_##name(g, id)
+
+/** 
+* @brief destroy an edge which has been created previously
+*
+* This function will remove the specified edge ID, marking the space allocated
+* for it available for re-use as future edges are allocated.
+*
+ * The caller must appropriately free any resources referenced by the edge data
+ * before calling this function. The edge data is not modified by this
+ * function.
+ *
+ * @param name the name of the graph type
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param id the ID of the edge to be deleted
+ *
+ * @return dgraph_error indicating the result of the operation
+ */
+#define dgraph_destroy_edge(name, g, id) dgraph_destroy_edge_##name(g, id)
 
 /**
  * @brief check if a node ID exists in the given graph
@@ -527,7 +570,6 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  * @return bool indicating if the node exists or not
  */
 #define dgraph_node_exists(name, g, id) dgraph_node_exists_##name(g, id)
-
 
 /**
  * @brief check if a edge ID exists in the given graph

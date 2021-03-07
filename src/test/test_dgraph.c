@@ -113,6 +113,27 @@ void test_create_delete(void) {
 	should_be_true(dgraph_node_exists(intgraph, g, 0));
 	should_be_true(dgraph_node_exists(intgraph, g, 1));
 
+	/* delete the edge */
+	should_equal(dgraph_n_edges(intgraph, g), 1);
+	should_be_true(dgraph_edge_exists(intgraph, g, 0));
+	dgraph_foreach_adjacent(intgraph, g, 0, id,
+		should_equal(id, 1);
+	);
+	status = dgraph_destroy_edge(intgraph, g, 0);
+	should_be_false(dgraph_edge_exists(intgraph, g, 0));
+	should_equal(dgraph_n_edges(intgraph, g), 0);
+	dgraph_foreach_adjacent(intgraph, g, 0, id,
+		fail("this should not be reachable (id=%d)", id);
+	);
+
+	/* create an edge again and make sure id 0 is re-used */
+	status = dgraph_create_edge(intgraph, g, &id, 789, 0, 1);
+	should_equal(status, DGRAPH_ERROR_OK);
+	should_equal(id, 0);
+	dgraph_foreach_adjacent(intgraph, g, 0, id,
+		should_equal(id, 1);
+	);
+
 	dgraph_destroy(intgraph, g);
 
 	printf("OK\n");

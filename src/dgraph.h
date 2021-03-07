@@ -13,6 +13,8 @@ typedef enum {
 	DGRAPH_ERROR_EDGE_SOURCE_NONEXISTANT,
 	DGRAPH_ERROR_EDGE_SINK_NONEXISTANT,
 	DGRAPH_ERROR_UNREACHABLE, /* should never happen */
+	DGRAPH_ERROR_SINK, /* can't delete node because it is a sink for at least one edge */
+	DGRAPH_ERROR_SOURCE, /* can't delete node because it is a source for at least one edge */
 } dgraph_error;
 
 /**** dgraph private API (keep scrollin'...) *********************************/
@@ -32,6 +34,11 @@ KHASH_MAP_INIT_INT64(dgraph_id2idlist, vec_dgraph_id)
 /* Sets of node/edge IDs */
 KHASH_SET_INIT_INT64(dgraph_idset)
 
+/* WARNING: the nodes, edges, edge_source, and edge_sink vectors cannot be
+ * safely used directly, because arbitrary indices may be marked as deleted.
+ * Naively iterating over the node list will NOT produce correct results if
+ * nodes have been deleted. Use the macros. Don't interact with this structure
+ * directly. */
 #define _DGRAPH_TYPE(name, node_data_t, edge_data_t) \
 	typedef vec_t(node_data_t) vec_dgraph_node_data_##name; \
 	typedef vec_t(edge_data_t) vec_dgraph_edge_data_##name; \
@@ -58,6 +65,7 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 	int dgraph_n_edges##name(dgraph_##name* g); \
 	bool dgraph_node_exists_##name(dgraph_##name* g, dgraph_id id); \
 	bool dgraph_edge_exists_##name(dgraph_##name* g, dgraph_id id); \
+	dgraph_error dgraph_destroy_node_##name(dgraph_##name* g, dgraph_id id); \
 	dgraph_error dgraph_create_edge_##name(dgraph_##name* g, dgraph_id* edgeid, edge_data_t data, dgraph_id source, dgraph_id sink); \
 	dgraph_##name* dgraph_init_##name(); \
 	void dgraph_destroy_##name(dgraph_##name* g);
@@ -118,7 +126,8 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 		khint_t k; \
 		k = kh_get(dgraph_idset, g->deleted_nodes, id); \
 		/* If not in the deleted nodes set, it must exist. */ \
-		return (k == kh_end(g->deleted_nodes)); \
+		bool res=(k == kh_end(g->deleted_nodes)); \
+		return res; \
 	} \
 	SCOPE bool dgraph_edge_exists_##name(dgraph_##name* g, dgraph_id id) { \
 		if ((id < 0) || (id >= g->edges.length)) { return false; } \
@@ -140,24 +149,24 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 		} else { \
 			/* case where we can re-use existing slots in our \
 			 * data structures */ \
-			dgraph_id key, dummy; \
-			(void)(dummy); \
-			kh_foreach(g->deleted_nodes, key, dummy, \
+			dgraph_id key; \
+			for (khint_t i = kh_begin(g->deleted_nodes); i != kh_end(g->deleted_nodes); ++i) { \
+				key = kh_key(g->deleted_nodes, i); \
 				*nodeid = key; \
 				g->nodes.data[key] = data; \
 				kh_del(dgraph_idset, g->deleted_nodes, key); \
 				return DGRAPH_ERROR_OK; \
-			); \
+			} \
 		} \
 		return DGRAPH_ERROR_UNREACHABLE; \
 	} \
-	int dgraph_n_nodes_##name(dgraph_##name* g) { \
-		return g->nodes.length; \
+	SCOPE int dgraph_n_nodes_##name(dgraph_##name* g) { \
+		return g->nodes.length - kh_size(g->deleted_nodes); \
 	}  \
-	int dgraph_n_edges_##name(dgraph_##name* g) { \
-		return g->edges.length; \
+	SCOPE int dgraph_n_edges_##name(dgraph_##name* g) { \
+		return g->edges.length - kh_size(g->deleted_edges); \
 	}  \
-	dgraph_error dgraph_create_edge_##name(dgraph_##name* g, dgraph_id* edgeid, edge_data_t data, dgraph_id source, dgraph_id sink) { \
+	SCOPE dgraph_error dgraph_create_edge_##name(dgraph_##name* g, dgraph_id* edgeid, edge_data_t data, dgraph_id source, dgraph_id sink) { \
 		/* validate that the source and sink nodes exist */ \
 		if (!dgraph_node_exists_##name(g, source)) { \
 			return DGRAPH_ERROR_EDGE_SOURCE_NONEXISTANT; \
@@ -220,8 +229,38 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 		} \
 		return DGRAPH_ERROR_UNREACHABLE; \
 	} \
+	SCOPE dgraph_error dgraph_destroy_node_##name(dgraph_##name* g, dgraph_id id) { \
+		khint_t k; int r; \
+		/* make sure we aren't a sink for any extant edge */ \
+		k = kh_get(dgraph_id2idlist, g->edges_by_sink, id); \
+		if (k != kh_end(g->edges_by_sink)) { \
+			if (kh_val(g->edges_by_sink, k).length > 0) { \
+				return DGRAPH_ERROR_SINK; \
+			} \
+		} \
+		/* make sure we aren't a source for any extant edge */ \
+		k = kh_get(dgraph_id2idlist, g->edges_by_source, id); \
+		if (k != kh_end(g->edges_by_source)) { \
+			if (kh_val(g->edges_by_source, k).length > 0) { \
+				return DGRAPH_ERROR_SOURCE; \
+			} \
+		} \
+		/* insert ourselves into the deleted ID set */ \
+		kh_put(dgraph_idset, g->deleted_nodes, id, &r); \
+		if (r < 0) { return DGRAPH_ERROR_MALLOC_FAILED; } \
+		/* delete our by_source and by_sink entries */ \
+		k = kh_get(dgraph_id2idlist, g->edges_by_sink, id); \
+		if (k != kh_end(g->edges_by_sink)) { \
+			vec_deinit(&(kh_val(g->edges_by_sink, k))); \
+		} \
+		k = kh_get(dgraph_id2idlist, g->edges_by_source, id); \
+		if (k != kh_end(g->edges_by_source)) { \
+			vec_deinit(&(kh_val(g->edges_by_source, k))); \
+		} \
+		return DGRAPH_ERROR_OK; \
+	} \
 
-	/* TODO: 
+	/* TODO:
 	 * node deletion
 	 * edge deletion
 	 *	handle edge-by-source/sink data, remember this may have multiple
@@ -431,7 +470,7 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  * @param source the source node ID which the edge should be attached to
  * @param sink the sink node ID which the edge should be attached to
  *
- * @return dgraph_error indicating the result of the operatin
+ * @return dgraph_error indicating the result of the operation
 */
 #define dgraph_create_edge(name, g, edgeid, data, source, sink) \
 		dgraph_create_edge_##name(g, edgeid, data, source, sink)
@@ -457,21 +496,55 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  */
 #define dgraph_n_edges(name, g) dgraph_n_edges_##name(g)
 
-/* TODO: docs */
-#define dgraph_foreach_node(name, g, idvar, code) \
-	do { \
-		for(idvar=0 ; idvar < dgraph_n_nodes(name, g) ; idvar++) { \
-			code \
-		} \
-	} while(0)
+/**
+ * @brief destroy a node which has been created previously
+ *
+ * This function will remove the specified node ID, marking space allocated for
+ * it available for re-use as future nodes are allocated.
+ *
+ * If a node is to be deleted, it must not be a source or a sink of any edge.
+ * If it is, node deletion will fail with either DGRAPH_ERROR_SINK, or
+ * DGRAPH_ERROR_SOURCE, as appropriate.
+ *
+ * The caller must appropriately free any resources referenced by the node data
+ * before calling this function.
+ *
+ * @param name the name of the graph type
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param id the ID of the node to be deleted
+ *
+ * @return dgraph_error indicating the result of the operation
+ */
+#define dgraph_destroy_node(name, g, id) dgraph_destroy_node_##name(g, id)
 
-/* TODO: docs */
-#define dgraph_foreach_edge(name, g, idvar, code) \
-	do { \
-		for(idvar=0 ; idvar < dgraph_n_edges(name, g) ; idvar++) { \
-			code \
-		} \
-	} while(0)
+/**
+ * @brief check if a node ID exists in the given graph
+ *
+ * @param name the name of the graph type
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param id the ID of the node to check existence of
+ *
+ * @return bool indicating if the node exists or not
+ */
+#define dgraph_node_exists(name, g, id) dgraph_node_exists_##name(g, id)
+
+
+/**
+ * @brief check if a edge ID exists in the given graph
+ *
+ * @param name the name of the graph type
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param id the ID of the edge to check existence of
+ *
+ * @return bool indicating if the edge exists or not
+ */
+#define dgraph_edge_exists(name, g, id) dgraph_edge_exists_##name(g, id)
+
+/* TODO: */
+#define dgraph_foreach_node(name, g, idvar, code)
+
+/* TODO: */
+#define dgraph_foreach_edge(name, g, idvar, code)
 
 /**
  * @brief iterate over nodes adjacent to a given node
@@ -481,7 +554,7 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  * successor nodes to the specified node ID. For example:
  *
  * dgraph_id id;
- * dgraph_foreach_adjacent(sometype, g, 123, id, 
+ * dgraph_foreach_adjacent(sometype, g, 123, id,
  *     printf("traversed node %d adjacent to node %d\n", id, 123);
  * );
  *
@@ -507,7 +580,6 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 			code \
 		} \
 	} while(0);
-
 
 
 

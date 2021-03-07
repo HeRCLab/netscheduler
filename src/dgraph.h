@@ -3,6 +3,8 @@
 /* This library implements a general-purpose directed graph data structure,
  * which supports attaching arbitrary data to nodes and links.  */
 
+#include <stdbool.h>
+
 typedef int dgraph_id;
 
 typedef enum {
@@ -10,6 +12,7 @@ typedef enum {
 	DGRAPH_ERROR_MALLOC_FAILED,
 	DGRAPH_ERROR_EDGE_SOURCE_NONEXISTANT,
 	DGRAPH_ERROR_EDGE_SINK_NONEXISTANT,
+	DGRAPH_ERROR_UNREACHABLE, /* should never happen */
 } dgraph_error;
 
 /**** dgraph private API (keep scrollin'...) *********************************/
@@ -26,6 +29,9 @@ typedef vec_t(dgraph_id) vec_dgraph_id;
 /* Map edge or node IDs to lists of edge or node IDs */
 KHASH_MAP_INIT_INT64(dgraph_id2idlist, vec_dgraph_id)
 
+/* Sets of node/edge IDs */
+KHASH_SET_INIT_INT64(dgraph_idset)
+
 #define _DGRAPH_TYPE(name, node_data_t, edge_data_t) \
 	typedef vec_t(node_data_t) vec_dgraph_node_data_##name; \
 	typedef vec_t(edge_data_t) vec_dgraph_edge_data_##name; \
@@ -41,12 +47,17 @@ KHASH_MAP_INIT_INT64(dgraph_id2idlist, vec_dgraph_id)
 		khash_t(dgraph_id2idlist)* edges_by_sink; \
 		/* edges indexed by their sink ID */ \
 		khash_t(dgraph_id2idlist)* edges_by_source; \
+		/* IDs that have been deleted and can be re-used */ \
+		khash_t(dgraph_idset)* deleted_edges; \
+		khash_t(dgraph_idset)* deleted_nodes; \
 	} dgraph_##name;
 
 #define _DGRAPH_PROTOTYPES(name, node_data_t, edge_data_t) \
 	dgraph_error dgraph_create_node_##name(dgraph_##name* g, dgraph_id* nodeid, node_data_t data); \
 	int dgraph_n_nodes_##name(dgraph_##name* g); \
 	int dgraph_n_edges##name(dgraph_##name* g); \
+	bool dgraph_node_exists_##name(dgraph_##name* g, dgraph_id id); \
+	bool dgraph_edge_exists_##name(dgraph_##name* g, dgraph_id id); \
 	dgraph_error dgraph_create_edge_##name(dgraph_##name* g, dgraph_id* edgeid, edge_data_t data, dgraph_id source, dgraph_id sink); \
 	dgraph_##name* dgraph_init_##name(); \
 	void dgraph_destroy_##name(dgraph_##name* g);
@@ -66,7 +77,22 @@ KHASH_MAP_INIT_INT64(dgraph_id2idlist, vec_dgraph_id)
 		} \
 		g->edges_by_sink = kh_init(dgraph_id2idlist); \
 		if (g->edges_by_sink == NULL) { \
-			free(g ->edges_by_source); \
+			kh_destroy(dgraph_id2idlist, g->edges_by_source); \
+			free(g); \
+			return NULL; \
+		} \
+		g->deleted_edges = kh_init(dgraph_idset); \
+		if (g->deleted_edges == NULL) { \
+			kh_destroy(dgraph_id2idlist, g->edges_by_sink); \
+			kh_destroy(dgraph_id2idlist, g->edges_by_source); \
+			free(g); \
+			return NULL; \
+		} \
+		g->deleted_nodes = kh_init(dgraph_idset); \
+		if (g->deleted_nodes == NULL) { \
+			kh_destroy(dgraph_idset, g->deleted_edges); \
+			kh_destroy(dgraph_id2idlist, g->edges_by_sink); \
+			kh_destroy(dgraph_id2idlist, g->edges_by_source); \
 			free(g); \
 			return NULL; \
 		} \
@@ -79,19 +105,51 @@ KHASH_MAP_INIT_INT64(dgraph_id2idlist, vec_dgraph_id)
 		kh_foreach_value(g->edges_by_sink, m, vec_deinit(&m);); \
 		kh_destroy(dgraph_id2idlist, g->edges_by_source); \
 		kh_destroy(dgraph_id2idlist, g->edges_by_sink); \
+		kh_destroy(dgraph_idset, g->deleted_edges); \
+		kh_destroy(dgraph_idset, g->deleted_nodes); \
 		vec_deinit(&(g->edge_sinks)); \
 		vec_deinit(&(g->edge_sources)); \
 		vec_deinit(&(g->edges)); \
 		vec_deinit(&(g->nodes)); \
 		free(g); \
 	} \
+	SCOPE bool dgraph_node_exists_##name(dgraph_##name* g, dgraph_id id) { \
+		if ((id < 0) || (id >= g->nodes.length)) { return false; } \
+		khint_t k; \
+		k = kh_get(dgraph_idset, g->deleted_nodes, id); \
+		/* If not in the deleted nodes set, it must exist. */ \
+		return (k == kh_end(g->deleted_nodes)); \
+	} \
+	SCOPE bool dgraph_edge_exists_##name(dgraph_##name* g, dgraph_id id) { \
+		if ((id < 0) || (id >= g->edges.length)) { return false; } \
+		khint_t k; \
+		k = kh_get(dgraph_idset, g->deleted_edges, id); \
+		/* If not in the deleted edges set, it must exist. */ \
+		return (k == kh_end(g->deleted_edges)); \
+	} \
 	SCOPE dgraph_error dgraph_create_node_##name(dgraph_##name* g, dgraph_id* nodeid, node_data_t data) { \
-		*nodeid = g->nodes.length; \
-		if (vec_push(&(g->nodes), data) == 0) { \
-			return DGRAPH_ERROR_OK; \
+		if (kh_size(g->deleted_nodes) == 0) { \
+			/* case where no nodes have been deleted, so we have \
+			 * to append on to our data structures */ \
+			*nodeid = g->nodes.length; \
+			if (vec_push(&(g->nodes), data) == 0) { \
+				return DGRAPH_ERROR_OK; \
+			} else { \
+				return DGRAPH_ERROR_MALLOC_FAILED; \
+			} \
 		} else { \
-			return DGRAPH_ERROR_MALLOC_FAILED; \
+			/* case where we can re-use existing slots in our \
+			 * data structures */ \
+			dgraph_id key, dummy; \
+			(void)(dummy); \
+			kh_foreach(g->deleted_nodes, key, dummy, \
+				*nodeid = key; \
+				g->nodes.data[key] = data; \
+				kh_del(dgraph_idset, g->deleted_nodes, key); \
+				return DGRAPH_ERROR_OK; \
+			); \
 		} \
+		return DGRAPH_ERROR_UNREACHABLE; \
 	} \
 	int dgraph_n_nodes_##name(dgraph_##name* g) { \
 		return g->nodes.length; \
@@ -101,48 +159,76 @@ KHASH_MAP_INIT_INT64(dgraph_id2idlist, vec_dgraph_id)
 	}  \
 	dgraph_error dgraph_create_edge_##name(dgraph_##name* g, dgraph_id* edgeid, edge_data_t data, dgraph_id source, dgraph_id sink) { \
 		/* validate that the source and sink nodes exist */ \
-		if ((source < 0) || (source > dgraph_n_nodes_##name(g))) { \
+		if (!dgraph_node_exists_##name(g, source)) { \
 			return DGRAPH_ERROR_EDGE_SOURCE_NONEXISTANT; \
 		} \
-		if ((sink < 0) || (sink > dgraph_n_nodes_##name(g))) { \
+		if (!dgraph_node_exists_##name(g, sink)) { \
 			return DGRAPH_ERROR_EDGE_SINK_NONEXISTANT; \
 		} \
-		/* insert the edge into the edge data array */ \
-		*edgeid = g->edges.length; \
-		if (vec_push(&(g->edges), data) != 0) { \
-			return DGRAPH_ERROR_MALLOC_FAILED; \
-		} \
-		/* record the source and sink data */ \
-		vec_push(&(g->edge_sources), source); \
-		vec_push(&(g->edge_sinks), sink); \
-		/* insert into edges_by_source map */ \
-		khint_t k; int r; \
-		k = kh_put(dgraph_id2idlist, g->edges_by_source, source, &r); \
-		if (r < 0) { \
-			vec_pop(&(g->edges)); \
-			vec_pop(&(g->edge_sources)); \
-			vec_pop(&(g->edge_sinks)); \
-			return DGRAPH_ERROR_MALLOC_FAILED; \
-		} \
-		vec_init(&(kh_value(g->edges_by_source, k))); \
-		vec_push(&(kh_value(g->edges_by_source, k)), *edgeid); \
-		/* insert into edges_by_sink map */ \
-		k = kh_put(dgraph_id2idlist, g->edges_by_sink, sink, &r); \
-		if (r < 0) { \
-			vec_pop(&(g->edges)); \
-			vec_pop(&(g->edge_sources)); \
-			vec_pop(&(g->edge_sinks)); \
-			k = kh_get(dgraph_id2idlist, g->edges_by_source, source); \
-			if (k != kh_end(g->edges_by_source)) { \
-				vec_deinit(&(kh_value(g->edges_by_source, k))); \
-				kh_del(dgraph_id2idlist, g->edges_by_source, k); \
+		if (kh_size(g->deleted_edges) == 0) { \
+			/* insert the edge into the edge data array */ \
+			*edgeid = g->edges.length; \
+			if (vec_push(&(g->edges), data) != 0) { \
+				return DGRAPH_ERROR_MALLOC_FAILED; \
 			} \
-			return DGRAPH_ERROR_MALLOC_FAILED; \
+			/* record the source and sink data */ \
+			vec_push(&(g->edge_sources), source); \
+			vec_push(&(g->edge_sinks), sink); \
+			/* insert into edges_by_source map */ \
+			khint_t k; int r; \
+			k = kh_put(dgraph_id2idlist, g->edges_by_source, source, &r); \
+			if (r < 0) { \
+				vec_pop(&(g->edges)); \
+				vec_pop(&(g->edge_sources)); \
+				vec_pop(&(g->edge_sinks)); \
+				return DGRAPH_ERROR_MALLOC_FAILED; \
+			} \
+			vec_init(&(kh_value(g->edges_by_source, k))); \
+			vec_push(&(kh_value(g->edges_by_source, k)), *edgeid); \
+			/* insert into edges_by_sink map */ \
+			k = kh_put(dgraph_id2idlist, g->edges_by_sink, sink, &r); \
+			if (r < 0) { \
+				vec_pop(&(g->edges)); \
+				vec_pop(&(g->edge_sources)); \
+				vec_pop(&(g->edge_sinks)); \
+				k = kh_get(dgraph_id2idlist, g->edges_by_source, source); \
+				if (k != kh_end(g->edges_by_source)) { \
+					vec_deinit(&(kh_value(g->edges_by_source, k))); \
+					kh_del(dgraph_id2idlist, g->edges_by_source, k); \
+				} \
+				return DGRAPH_ERROR_MALLOC_FAILED; \
+			} \
+			vec_init(&(kh_value(g->edges_by_sink, k))); \
+			vec_push(&(kh_value(g->edges_by_sink, k)), *edgeid); \
+			return DGRAPH_ERROR_OK; \
+		} else { \
+			dgraph_id key, dummy; \
+			(void)(dummy); \
+			kh_foreach(g->deleted_edges, key, dummy, \
+				*edgeid = key; \
+				g->edges.data[key] = data; \
+				kh_del(dgraph_idset, g->deleted_edges, key); \
+				khint_t k; \
+				k = kh_get(dgraph_id2idlist, g->edges_by_source, source); \
+				vec_push(&(kh_value(g->edges_by_source, k)), *edgeid); \
+				k = kh_get(dgraph_id2idlist, g->edges_by_sink, sink); \
+				vec_push(&(kh_value(g->edges_by_sink, k)), *edgeid); \
+				g->edge_sources.data[key] = source; \
+				g->edge_sinks.data[key] = sink; \
+				return DGRAPH_ERROR_OK; \
+			); \
 		} \
-		vec_init(&(kh_value(g->edges_by_sink, k))); \
-		vec_push(&(kh_value(g->edges_by_sink, k)), *edgeid); \
-		return DGRAPH_ERROR_OK; \
+		return DGRAPH_ERROR_UNREACHABLE; \
 	} \
+
+	/* TODO: 
+	 * node deletion
+	 * edge deletion
+	 *	handle edge-by-source/sink data, remember this may have multiple
+	 *	entries and we only want to remove the one we just deleted, not all of them.
+	 *
+	 *	also blank out the source/sink data
+	 */
 
 
 /**** dgraph public API ******************************************************/

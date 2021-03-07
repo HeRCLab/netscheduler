@@ -5,7 +5,7 @@ ENV DEBCONF_NONINTERACTIVE_SEEN true
 
 RUN apt-get update && apt-get upgrade --yes
 
-RUN apt-get install --yes build-essential git locales gdb
+RUN apt-get install --yes build-essential git locales gdb valgrind
 
 RUN mkdir /src && cd /src && git clone https://github.com/HeRCLab/libherc.git && cd libherc && git checkout v0.0.1 && make CC=gcc && make CC=gcc install
 

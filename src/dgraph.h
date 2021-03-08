@@ -4,6 +4,7 @@
  * which supports attaching arbitrary data to nodes and links.  */
 
 #include <stdbool.h>
+#include <stdio.h>
 
 typedef int dgraph_id;
 
@@ -68,7 +69,7 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 	dgraph_error dgraph_destroy_node_##name(dgraph_##name* g, dgraph_id id); \
 	dgraph_error dgraph_create_edge_##name(dgraph_##name* g, dgraph_id* edgeid, edge_data_t data, dgraph_id source, dgraph_id sink); \
 	dgraph_##name* dgraph_init_##name(); \
-	void dgraph_destroy_##name(dgraph_##name* g);
+	void dgraph_destroy_##name(dgraph_##name* g); \
 
 #define _DGRAPH_IMPL(name, SCOPE, node_data_t, edge_data_t) \
 	SCOPE dgraph_##name* dgraph_init_##name() { \
@@ -192,7 +193,8 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 				vec_pop(&(g->edge_sinks)); \
 				return DGRAPH_ERROR_MALLOC_FAILED; \
 			} \
-			vec_init(&(kh_value(g->edges_by_source, k))); \
+			/* if r is exactly 0, then the vector is already initialized */ \
+			if (r != 0) { vec_init(&(kh_value(g->edges_by_source, k))); } \
 			vec_push(&(kh_value(g->edges_by_source, k)), *edgeid); \
 			/* insert into edges_by_sink map */ \
 			k = kh_put(dgraph_id2idlist, g->edges_by_sink, sink, &r); \
@@ -207,7 +209,8 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 				} \
 				return DGRAPH_ERROR_MALLOC_FAILED; \
 			} \
-			vec_init(&(kh_value(g->edges_by_sink, k))); \
+			/* if r is exactly 0, then the vector is already initialized */ \
+			if (r != 0) {vec_init(&(kh_value(g->edges_by_sink, k))); } \
 			vec_push(&(kh_value(g->edges_by_sink, k)), *edgeid); \
 			return DGRAPH_ERROR_OK; \
 		} else { \
@@ -287,6 +290,72 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 		g->edge_sinks.data[id] = -1; \
 		return DGRAPH_ERROR_OK; \
 	} \
+
+
+	/* This is not part of the official public API, because it's a bit
+	 * tricky, and required understanding the underlying structure of the
+	 * graph object in order to read.
+	 *
+	 * This macro dumps a pretty-printed version of the graph state to
+	 * the specified file stream.
+	 *
+	 * ndvar is a variable that will be overwritten with node values, and
+	 * onnode should be a code block that will pretty-print it in a
+	 * one-line format. Similarly for edvar and onedge.
+	 */
+#define dgraph_debug_dump(stream, name, g, ndvar, onnode, edvar, onedge) \
+	do {\
+		fprintf(stream, "dump of " #name " graph g@%p\n", (void*) g); \
+		fprintf(stream, "\t%d nodes:\n", dgraph_n_nodes_##name(g)); \
+		for (dgraph_id id = 0 ; id < g->nodes.length ; id++) { \
+			if (dgraph_node_exists_##name(g, id)) { \
+				fprintf(stream, "\t\tg->nodes.data[%d] = ", id); \
+				ndvar = g->nodes.data[id]; \
+				onnode \
+			} else { \
+				fprintf(stream, "\t\tg->nodes.data[%d] = UNUSED\n", id); \
+			} \
+		} \
+		fprintf(stream, "\t%d edges:\n", dgraph_n_edges_##name(g)); \
+		for (dgraph_id id = 0 ; id < g->edges.length ; id++) { \
+			if (dgraph_edge_exists_##name(g, id)) { \
+				fprintf(stream, "\t\tg->edges.data[%d] = ", id); \
+				edvar = g->edges.data[id]; \
+				onedge \
+			} else { \
+				fprintf(stream, "\t\tg->edges.data[%d] = UNUSED\n", id); \
+			} \
+		} \
+		fprintf(stream, "\tedge source & sinks:\n"); \
+		for (dgraph_id id = 0 ; id < g->edges.length ; id++) { \
+			if (dgraph_edge_exists_##name(g, id)) { \
+				fprintf(stream, "\t\tg->edge_sources.data[%d] = %d, g->edge_sinks.data[%d] = %d\n", id, g->edge_sources.data[id], id, g->edge_sinks.data[id]); \
+			} else { \
+				fprintf(stream, "\t\tg->edge_sources.data[%d] = UNUSED, g->edge_sinks.data[%d] = UNUSED\n", id, id); \
+			} \
+		} \
+		fprintf(stream, "\tedges by sink:\n"); \
+		dgraph_id _i; vec_dgraph_id _l; \
+		kh_foreach(g->edges_by_sink, _i, _l, \
+			fprintf(stream, "\t\tsink ID=%d\n", _i); \
+			int _vi; dgraph_id _vv; \
+			vec_foreach(&(_l), _vv, _vi) { \
+				fprintf(stream, "\t\t\tedge ID=%d\n", _vv); \
+			} \
+		); \
+		fprintf(stream, "\tedges by source:\n"); \
+		kh_foreach(g->edges_by_source, _i, _l, \
+			fprintf(stream, "\t\tsource ID=%d\n", _i); \
+			int _vi; dgraph_id _vv; \
+			vec_foreach(&(_l), _vv, _vi) { \
+				fprintf(stream, "\t\t\tedge ID=%d\n", _vv); \
+			} \
+		); \
+		fprintf(stream, "\t%d deleted nodes\n", kh_size(g->deleted_nodes)); \
+		kh_foreach_value(g->deleted_nodes, _i, printf("\t\tnode ID=%d\n", _i);); \
+		fprintf(stream, "\t%d deleted edges\n", kh_size(g->deleted_edges)); \
+		kh_foreach_value(g->deleted_edges, _i, printf("\t\tnode ID=%d\n", _i);); \
+	} while(0)
 
 /**** dgraph public API ******************************************************/
 
@@ -473,11 +542,11 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 *
  * @param name the name of the graph type
  * @param g dgraph_t(name)* pointing to a previously allocated graph
- * @param nodeid dgraph_id* which will be overwritten with the the ID of the
+ * @param nodeid dgraph_id* which will be overwritten with the ID of the
  *  new node
  * @param data data which should be attached to node on creation
  *
- * @return dgraph_error indicating the result of the operatin
+ * @return dgraph_error indicating the result of the operation
 */
 #define dgraph_create_node(name, g, nodeid, data) \
 		dgraph_create_node_##name(g, nodeid, data)
@@ -488,7 +557,7 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  *
  * @param name the name of the graph type
  * @param g dgraph_t(name)* pointing to a previously allocated graph
- * @param nodeid dgraph_id* which will be overwritten with the the ID of the
+ * @param nodeid dgraph_id* which will be overwritten with the ID of the
  *  new node
  * @param data data which should be attached to node on creation
  * @param source the source node ID which the edge should be attached to
@@ -542,7 +611,7 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  */
 #define dgraph_destroy_node(name, g, id) dgraph_destroy_node_##name(g, id)
 
-/** 
+/**
 * @brief destroy an edge which has been created previously
 *
 * This function will remove the specified edge ID, marking the space allocated
@@ -582,14 +651,67 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  */
 #define dgraph_edge_exists(name, g, id) dgraph_edge_exists_##name(g, id)
 
-/* TODO: */
-#define dgraph_foreach_node(name, g, idvar, code)
-
-/* TODO: */
-#define dgraph_foreach_edge(name, g, idvar, code)
+/**
+ * @brief evaluates to the data attached to the specified node ID
+ *
+ * This macro can safely be used on the LHS of an assignment, as it hides
+ * a dereference.
+ *
+ * If the specified ID does not exist, then this macro evaluates to NULL, which
+ * will be typecast to the expected type of the node data. NOTE: this fact may
+ * hide invalid ID references in graphs with primitive node types, if you
+ * cannot guarantee a node ID is valid, you should use dgraph_node_exists()
+ * to check before using this macro.
+ *
+ * XXX: do I want to use 0 here? NULL made the compiler throw
+ * pointer-to-int-cast warnings.
+ *
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param id the ID of the edge to access data for
+ */
+#define dgraph_node_data(name, g, id) (dgraph_node_exists(name, g, id) ? g->nodes.data[id] : (typeof(g->nodes.data[0])) 0)
 
 /**
- * @brief iterate over nodes adjacent to a given node
+* @brief runs a given code block once for every extant node in the graph
+*
+ * @param name the name of the graph type
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param idvar a variable which will be overwritten with the current ID before
+ * the code block is run
+ * @param code a block of code to run for each node
+ */
+#define dgraph_foreach_node(name, g, idvar, code) \
+	do { \
+		for (dgraph_id _id = 0 ; _id < g->nodes.length ; _id ++) { \
+			if (dgraph_node_exists(name, g, _id)) { \
+				idvar = _id; \
+				code \
+			} \
+		} \
+	} while(0)
+
+
+/**
+* @brief runs a given code block once for every extant edge in the graph
+*
+ * @param name the name of the graph type
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param idvar a variable which will be overwritten with the current ID before
+ * the code block is run
+ * @param code a block of code to run for each edge
+ */
+#define dgraph_foreach_edge(name, g, idvar, code) \
+	do { \
+		for (dgraph_id _id = 0 ; _id < g->edges.length ; _id ++) { \
+			if (dgraph_edge_exists(name, g, _id)) { \
+				idvar = _id; \
+				code \
+			} \
+		} \
+	} while(0)
+
+/**
+ * @brief iterate over successor nodes to a given node
  *
  * This method runs a given code block once for each node which has an in-edge
  * with nodeid as the origin node. Put differently, this iterates over all
@@ -597,7 +719,7 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  *
  * dgraph_id id;
  * dgraph_foreach_adjacent(sometype, g, 123, id,
- *     printf("traversed node %d adjacent to node %d\n", id, 123);
+ *     printf("traversed node %d, a successor to node %d\n", id, 123);
  * );
  *
  * @param name the name of the graph type
@@ -605,10 +727,10 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  * @param nodeid the node ID which to find nodes adjacent to
  * @param idvar a variable of type dgraph_id which will be overwritten each
  *	iteration before the code block is run with the present node ID which
- *	is adjacent to nodeid
+ *	is a successor to nodeid
  * @param code is a block of C code to run in each iteration
  */
-#define dgraph_foreach_adjacent(name, g, nodeid, idvar, code) \
+#define dgraph_foreach_successor(name, g, nodeid, idvar, code) \
 	do { \
 		vec_dgraph_id _eidvec; \
 		khint_t _k; \
@@ -621,8 +743,69 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 			idvar = g->edge_sinks.data[_eid]; \
 			code \
 		} \
-	} while(0);
+	} while(0)
 
+/**
+ * @brief iterate over ancestor nodes to a given node
+ *
+ * This method runs a given code block once for each node which has an out-edge
+ * with nodeid as the sink node. Put differently, this iterates over all
+ * ancestor nodes to the specified node ID. For example:
+ *
+ * dgraph_id id;
+ * dgraph_foreach_adjacent(sometype, g, 123, id,
+ *     printf("traversed node %d, an ancestor to node %d\n", id, 123);
+ * );
+ *
+ * @param name the name of the graph type
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param nodeid the node ID which to find nodes adjacent to
+ * @param idvar a variable of type dgraph_id which will be overwritten each
+ *	iteration before the code block is run with the present node ID which
+ *	is an ancestor to nodeid
+ * @param code is a block of C code to run in each iteration
+ */
+#define dgraph_foreach_ancestor(name, g, nodeid, idvar, code) \
+	do { \
+		vec_dgraph_id _eidvec; \
+		khint_t _k; \
+		_k = kh_get(dgraph_id2idlist, g->edges_by_sink, nodeid); \
+		if (_k == kh_end(g->edges_by_sink)) { break; } \
+		_eidvec = kh_value(g->edges_by_sink, _k); \
+		int _unused_index; \
+		dgraph_id _eid; \
+		vec_foreach(&(_eidvec), _eid, _unused_index) { \
+			idvar = g->edge_sources.data[_eid]; \
+			code \
+		} \
+	} while(0)
+
+/**
+ * @brief iterate over adjacent nodes to a given node
+ *
+ * This method runs a given code block once for each node which has an out-edge
+ * with nodeid as the sink node, or an in-edge with nodeid as the source node.
+ * Put differently, this iterates over all ancestor and successor nodes to the
+ * specified node ID. For example:
+ *
+ * dgraph_id id;
+ * dgraph_foreach_adjacent(sometype, g, 123, id,
+ *     printf("traversed node %d, an adjacent to node %d\n", id, 123);
+ * );
+ *
+ * @param name the name of the graph type
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param nodeid the node ID which to find nodes adjacent to
+ * @param idvar a variable of type dgraph_id which will be overwritten each
+ *	iteration before the code block is run with the present node ID which
+ *	is adjacent to nodeid
+ * @param code is a block of C code to run in each iteration
+ */
+#define dgraph_foreach_adjacent(name, g, nodeid, idvar, code) \
+	do { \
+		dgraph_foreach_successor(name, g, nodeid, idvar, code); \
+		dgraph_foreach_ancestor(name, g, nodeid, idvar, code); \
+	} while(0)
 
 
 

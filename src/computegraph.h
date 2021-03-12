@@ -83,5 +83,34 @@ typedef struct cg_edge_t {
 	int dummy; /* not used */
 } cg_edge;
 
+/**
+ * @brief create a new compute graph representing an MLP network
+ *
+ * This method creates only the abstract representation of the MLP.
+ *
+ * @param inputs number of input neurons
+ * @param outputs number of output neurons
+ * @param hidden number of hidden layers
+ * @param ... size of hidden layers, in order
+ *
+ * @return
+ */
+cg* cg_init_mlp(int inputs, int outputs, int hidden, ...);
+
+
+/**
+ * @brief Destroy a previously created compute graph, releasing all memory.
+ *
+ * @param g
+ */
+void cg_destroy(cg* g);
+
+/**
+ * @brief Generate a GraphViz DOT formatted graph showing the graph.
+ *
+ * @param g
+ * @param stream
+ */
+void cg_generate_dot(cg* g, FILE* stream);
 
 #endif /* COMPUTEGRAPH_H */

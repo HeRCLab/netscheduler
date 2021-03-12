@@ -3,8 +3,12 @@
 /* This library implements a general-purpose directed graph data structure,
  * which supports attaching arbitrary data to nodes and links.  */
 
+#ifndef DGRAPH_H
+#define DGRAPH_H
+
 #include <stdbool.h>
 #include <stdio.h>
+#include <err.h>
 
 typedef int dgraph_id;
 
@@ -19,9 +23,6 @@ typedef enum {
 } dgraph_error;
 
 /**** dgraph private API (keep scrollin'...) *********************************/
-
-#ifndef DGRAPH_H
-#define DGRAPH_H
 
 #include <herc/khash.h>
 #include <herc/vec.h>
@@ -657,19 +658,49 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  * This macro can safely be used on the LHS of an assignment, as it hides
  * a dereference.
  *
- * If the specified ID does not exist, then this macro evaluates to NULL, which
- * will be typecast to the expected type of the node data. NOTE: this fact may
- * hide invalid ID references in graphs with primitive node types, if you
- * cannot guarantee a node ID is valid, you should use dgraph_node_exists()
- * to check before using this macro.
- *
- * XXX: do I want to use 0 here? NULL made the compiler throw
- * pointer-to-int-cast warnings.
+ * If the specified ID does not exist, then this macro will immediately crash
+ * the program.
  *
  * @param g dgraph_t(name)* pointing to a previously allocated graph
  * @param id the ID of the edge to access data for
  */
-#define dgraph_node_data(name, g, id) (dgraph_node_exists(name, g, id) ? g->nodes.data[id] : (typeof(g->nodes.data[0])) 0)
+#define dgraph_node_data(name, g, id) (dgraph_node_exists(name, g, id) ? g->nodes.data[id] : __extension__({errx(1, "invalid node ID %d", id); g->nodes.data[0];}))
+
+/**
+ * @brief evaluates to the data attached to the specified edge ID
+ *
+ * This macro can safely be used on the LHS of an assignment, as it hides
+ * a dereference.
+ *
+ * If the specified ID does not exist, then this macro will immediately crash
+ * the program.
+ *
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param id the ID of the edge to access data for
+ */
+#define dgraph_edge_data(name, g, id) (dgraph_edge_exists(name, g, id) ? g->edges.data[id] : __extension__({errx(1, "invalid edge ID %d", id); g->edges.data[0];}))
+
+/**
+ * @brief get the node ID of the source node for the given edge
+ *
+ * If the specified edge ID does not exist, then this macro will immediately
+ * crash the program.
+ *
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param id the ID of the edge to access the source for
+ */
+#define dgraph_edge_source(name, g, id) (dgraph_edge_exists(name, g, id) ? g->edge_sources.data[id] : __extension__({errx(1, "invalid edge ID %d", id); g->edge_sources.data[0];}))
+
+/**
+ * @brief get the node ID of the sink node for the given edge
+ *
+ * If the specified edge ID does not exist, then this macro will immediately
+ * crash the program.
+ *
+ * @param g dgraph_t(name)* pointing to a previously allocated graph
+ * @param id the ID of the edge to access the sink for
+ */
+#define dgraph_edge_sink(name, g, id) (dgraph_edge_exists(name, g, id) ? g->edge_sinks.data[id] : __extension__({errx(1, "invalid edge ID %d", id); g->edge_sinks.data[0];}))
 
 /**
 * @brief runs a given code block once for every extant node in the graph
@@ -810,3 +841,4 @@ KHASH_SET_INIT_INT64(dgraph_idset)
 
 
 #endif /* DGRAPH_H */
+

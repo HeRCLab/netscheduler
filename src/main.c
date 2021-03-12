@@ -1,4 +1,5 @@
 #include "netscheduler.h"
+#include "computegraph.h"
 
 #include <herc/argparse.h>
 
@@ -64,6 +65,16 @@ void usage(void) {
 }
 
 int main (int argc, const char** argv) {
+
+	/* temporary hack to mess with cg stuff */
+	cg* g = cg_init_mlp(1, 1, 2, 3, 3);
+	/* cg_node n; */
+	/* cg_edge e; */
+	/* dgraph_debug_dump(stderr, cg, g->graph, n, printf("%s\n", cg_node_type_to_string(n.type));, e, printf("\n");); */
+	cg_generate_dot(g, stdout);
+	cg_destroy(g);
+	exit(0);
+
 	if (argc < 2) { usage(); exit(1); }
 
 	/* Don't bother doing real argument parsing at this stage, since we

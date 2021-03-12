@@ -54,6 +54,7 @@ typedef enum cg_node_concrete_type_t {
 	CG_NODE_CONCRETE_OUTPUT = 3001,
 	CG_NODE_CONCRETE_ADD = 3002,
 	CG_NODE_CONCRETE_MULT = 3003,
+	CG_NODE_CONCRETE_VAL = 3004,
 } cg_node_concrete_type;
 
 #define cg_node_concrete_type_to_string(_nt) \
@@ -61,6 +62,7 @@ typedef enum cg_node_concrete_type_t {
 	(_nt == CG_NODE_CONCRETE_OUTPUT) ? "OUTPUT" : \
 	(_nt == CG_NODE_CONCRETE_ADD) ? "ADD" : \
 	(_nt == CG_NODE_CONCRETE_MULT) ? "MULT" : \
+	(_nt == CG_NODE_CONCRETE_VAL) ? "VAL" : \
 	"UNKNOWN"
 
 typedef struct cg_node_concrete_t {
@@ -112,5 +114,15 @@ void cg_destroy(cg* g);
  * @param stream
  */
 void cg_generate_dot(cg* g, FILE* stream);
+
+/**
+ * @brief Process the compute graph in-place to create a concrete representation
+ *
+ * For each abstract node, this method generates appropriate concrete nodes
+ * which define the required operations to implement that node.
+ *
+ * @param g
+ */
+void cg_make_concrete(cg* g);
 
 #endif /* COMPUTEGRAPH_H */

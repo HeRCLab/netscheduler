@@ -54,7 +54,8 @@ typedef enum cg_node_concrete_type_t {
 	CG_NODE_CONCRETE_OUTPUT = 3001,
 	CG_NODE_CONCRETE_ADD = 3002,
 	CG_NODE_CONCRETE_MULT = 3003,
-	CG_NODE_CONCRETE_VAL = 3004,
+	CG_NODE_CONCRETE_ROVAL = 3004,
+	CG_NODE_CONCRETE_RWVAL = 3005,
 } cg_node_concrete_type;
 
 #define cg_node_concrete_type_to_string(_nt) \
@@ -62,11 +63,15 @@ typedef enum cg_node_concrete_type_t {
 	(_nt == CG_NODE_CONCRETE_OUTPUT) ? "OUTPUT" : \
 	(_nt == CG_NODE_CONCRETE_ADD) ? "ADD" : \
 	(_nt == CG_NODE_CONCRETE_MULT) ? "MULT" : \
-	(_nt == CG_NODE_CONCRETE_VAL) ? "VAL" : \
+	(_nt == CG_NODE_CONCRETE_ROVAL) ? "ROVAL" : \
+	(_nt == CG_NODE_CONCRETE_RWVAL) ? "RWVAL" : \
 	"UNKNOWN"
 
 typedef struct cg_node_concrete_t {
 	cg_node_concrete_type type;
+	/* if result is asserted, then this concrete node is a result node for
+	 * it's corresponding abstract node, otherwise it is intermediary */
+	bool result;
 } cg_node_concrete;
 
 typedef union cg_node_union_t {

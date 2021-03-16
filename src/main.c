@@ -67,7 +67,7 @@ void usage(void) {
 int main (int argc, const char** argv) {
 
 	/* temporary hack to mess with cg stuff */
-	cg* g = cg_init_mlp(1, 1, 2, 3, 3);
+	cg* g = cg_init_mlp(1, 1, 2, 5, 3);
 	/* cg_node n; */
 	/* cg_edge e; */
 	/* dgraph_debug_dump(stderr, cg, g->graph, n, printf("%s\n", cg_node_type_to_string(n.type));, e, printf("\n");); */

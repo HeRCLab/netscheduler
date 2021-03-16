@@ -107,9 +107,10 @@ void cg_generate_dot(cg* g, FILE* stream) {
 	fprintf(stream, "\t\tlabel = \"concrete\"\n");
 	dgraph_foreach_node(cg, g->graph, id,
 		if (dgraph_node_data(cg, g->graph, id).type == CG_NODE_CONCRETE) {
-			fprintf(stream, "\t\tn%d [label=%s]\n",
+			fprintf(stream, "\t\tn%d [label=%s color=%s]\n",
 				id,
-				cg_node_concrete_type_to_string(dgraph_node_data(cg, g->graph, id).node.concrete.type)
+				cg_node_concrete_type_to_string(dgraph_node_data(cg, g->graph, id).node.concrete.type),
+				dgraph_node_data(cg, g->graph, id).node.concrete.result ? "red" : "black"
 			);
 		}
 	);
@@ -160,34 +161,28 @@ static void cg_make_node_concrete(cg* g, dgraph_id id) {
 		dgraph_create_edge(cg, g->graph, &eid, e, id, sink);
 
 	} else if ((a.type == CG_NODE_ABSTRACT_HIDDEN) | (a.type == CG_NODE_ABSTRACT_OUTPUT)) {
-		/* XXX: right here is where activation function support should
-		 * be added when we get to that point */
 
-		dgraph_id output; /* only used for linking to the output on abstract output nodes */
+		/* We start by generating the concrete output, which is
+		 * the adder that sums up all the weight multiply results;
+		 * we will then go back and generate the mutlipliers and weight
+		 * VALs and link them into it. */
+		/* n.type = CG_NODE_CONCRETE; */
+		/* n.node.concrete.type = CG_NODE_CONCRETE_ADD; */
+		/* n.node.concrete.result = (a.type != CG_NODE_ABSTRACT_OUTPUT); */
+		/* dgraph_create_node(cg, g->graph, &coutput, n); */
+		/* dgraph_create_edge(cg, g->graph, &eid, e, id, coutput); */
 
-		if (a.type == CG_NODE_ABSTRACT_OUTPUT) {
-			/* This is an output node, so we also need to create
-			 * the concrete output */
-			n.type = CG_NODE_CONCRETE;
-			n.node.concrete.type = CG_NODE_CONCRETE_OUTPUT;
-			n.node.concrete.result = true;
-			dgraph_create_node(cg, g->graph, &output, n);
-			/* dgraph_create_edge(cg, g->graph, &eid, e, id, output); */
-			/* dgraph_create_edge(cg, g->graph, &eid, e, coutput, output); */
-		}
 
+		/* We will use this as a queue so as to generate nicely
+		 * balanced adder trees. */
+		vec_dgraph_id adderqueue;
+		vec_init(&adderqueue);
 
 		/* For each of the ancestors of a, we need to find their
 		 * results, which will be the concrete nodes implementing their
 		 * adder. */
 		dgraph_foreach_ancestor(cg, g->graph, id, source,
 			if (dgraph_node_data(cg, g->graph, source).type != CG_NODE_ABSTRACT) { continue; }
-
-			/* We will use this as a queue so as to generate nicely
-			 * balanced adder trees. */
-			vec_dgraph_id adderqueue;
-			vec_init(&adderqueue);
-
 			/* Now source refers to an abstract ancestor, so we
 			 * need to find the node which is a successor to
 			 * source, and which is concrete, and which has it's
@@ -197,12 +192,6 @@ static void cg_make_node_concrete(cg* g, dgraph_id id) {
 				if (succ.type != CG_NODE_CONCRETE) { continue; }
 				if (!succ.node.concrete.result) {continue; }
 
-
-				/* Insert the node into the adder queue. */
-				vec_insert(&adderqueue, 0, csource);
-				printf("inserted %d, length %d\n", csource, adderqueue.length);
-
-
 				/* csource no refers to the concrete result of
 				 * source. We need to generate a VAL node to
 				 * store the weight, a MULT node to multiply
@@ -210,88 +199,90 @@ static void cg_make_node_concrete(cg* g, dgraph_id id) {
 				 * output.
 				 */
 
+				/* VAL node */
+				n.type = CG_NODE_CONCRETE;
+				n.node.concrete.type = CG_NODE_CONCRETE_ROVAL;
+				n.node.concrete.result = false;
+				dgraph_create_node(cg, g->graph, &val, n);
 
+				/* abstract -> concrete VAL */
+				dgraph_create_edge(cg, g->graph, &eid, e, id, val);
 
-				/* [> VAL node <] */
-				/* n.type = CG_NODE_CONCRETE; */
-				/* n.node.concrete.type = CG_NODE_CONCRETE_VAL; */
-				/* dgraph_create_node(cg, g->graph, &val, n); */
-                                /*  */
-				/* [> abstract -> concrete VAL <] */
-				/* dgraph_create_edge(cg, g->graph, &eid, e, id, val); */
-                                /*  */
-				/* [> MULT node <] */
-				/* n.type = CG_NODE_CONCRETE; */
-				/* n.node.concrete.type = CG_NODE_CONCRETE_MULT; */
-				/* dgraph_create_node(cg, g->graph, &mult, n); */
-                                /*  */
-				/* [> abstract -> concrete MULT <] */
-				/* dgraph_create_edge(cg, g->graph, &eid, e, id, mult); */
-                                /*  */
-				/* [> VAL -> MULT <] */
-				/* dgraph_create_edge(cg, g->graph, &eid, e, val, mult); */
-                                /*  */
-				/* [> ADD (result of ancestor) -> MULT <] */
-				/* dgraph_create_edge(cg, g->graph, &eid, e, csource, mult); */
-                                /*  */
-				/* [> MULT -> ADD (result of abstract) <] */
+				/* MULT node */
+				n.type = CG_NODE_CONCRETE;
+				n.node.concrete.type = CG_NODE_CONCRETE_MULT;
+				n.node.concrete.result = false;
+				dgraph_create_node(cg, g->graph, &mult, n);
+
+				/* abstract -> concrete MULT */
+				dgraph_create_edge(cg, g->graph, &eid, e, id, mult);
+
+				/* VAL -> MULT */
+				dgraph_create_edge(cg, g->graph, &eid, e, val, mult);
+
+				/* ADD (result of ancestor) -> MULT */
+				dgraph_create_edge(cg, g->graph, &eid, e, csource, mult);
+
+				/* MULT -> ADD (result of abstract) */
+				vec_push(&adderqueue, mult);
 				/* dgraph_create_edge(cg, g->graph, &eid, e, mult, coutput); */
 
 			);
 
-			if (adderqueue.length == 1) {
-				n.type = CG_NODE_CONCRETE;
-				n.node.concrete.type = CG_NODE_CONCRETE_ADD;
-				n.node.concrete.result = true;
-				dgraph_create_node(cg, g->graph, &id, n);
-				dgraph_create_edge(cg, g->graph, &eid, e, adderqueue.data[0], id);
-			}
-
-			/* Now we process all the nodes that we need to create adders
-			 * for, using adder queue to maintain a balanced adder tree. */
-			while(adderqueue.length > 1) {
-				/* note: these cannot be merged into one line
-				 * because it confuses the C preprocessor */
-				dgraph_id srcid1;
-				dgraph_id srcid2;
-				dgraph_id newid;
-
-				srcid1 = vec_pop(&adderqueue);
-				srcid2 = vec_pop(&adderqueue);
-
-				/* Create an adder node to add both of the two nodes
-				 * we just popped out of the queue. */
-				n.type = CG_NODE_CONCRETE;
-				n.node.concrete.type = CG_NODE_CONCRETE_ADD;
-				n.node.concrete.result = false;
-				dgraph_create_node(cg, g->graph, &newid, n);
-
-				/* Link the source nodes to the new node */
-				dgraph_create_edge(cg, g->graph, &eid, e, srcid1, newid);
-				dgraph_create_edge(cg, g->graph, &eid, e, srcid2, newid);
-
-				/* Push the new node back into the queue, since we may
-				 * need to create additional layers in the tree. */
-				vec_insert(&adderqueue, 0, newid);
-				printf("xxx %d\n", adderqueue.length);
-			}
-
-			/* Mark the final node in the tree as a result, only if we
-			 * aren't an output layer, in which case we link it to the
-			 * output node instead. */
-			if (adderqueue.length > 0) {
-				dgraph_id final = vec_pop(&adderqueue);
-				if (a.type == CG_NODE_ABSTRACT_OUTPUT) {
-					dgraph_create_edge(cg, g->graph, &eid, e, final, output);
-				} else {
-					cg_node finalnode = dgraph_node_data(cg, g->graph, final);
-					finalnode.node.concrete.result = true;
-				}
-			}
-
-			vec_deinit(&adderqueue);
-
 		);
+
+		coutput = -1;
+		while (adderqueue.length > 1) {
+			dgraph_id srcid1, srcid2, newid;
+
+			srcid1 = vec_pop(&adderqueue);
+			srcid2 = vec_pop(&adderqueue);
+
+			/* Create an adder node to add both of the two nodes
+			 * we just popped out of the queue. */
+			n.type = CG_NODE_CONCRETE;
+			n.node.concrete.type = CG_NODE_CONCRETE_ADD;
+			n.node.concrete.result = true;
+			dgraph_create_node(cg, g->graph, &newid, n);
+
+			/* Link the source nodes to the new node */
+			dgraph_create_edge(cg, g->graph, &eid, e, srcid1, newid);
+			dgraph_create_edge(cg, g->graph, &eid, e, srcid2, newid);
+
+			/* Link the adder to it's abstract node */
+			dgraph_create_edge(cg, g->graph, &eid, e, id, newid);
+
+			/* Push the new node back into the queue, since we may
+			 * need to create additional layers in the tree. */
+			vec_insert(&adderqueue, 0, newid);
+
+			if (coutput != -1) {
+				dgraph_node_data(cg, g->graph, coutput).node.concrete.result = false;
+			}
+
+			coutput = newid;
+		}
+
+		/* Edge case where there is only one node */
+		if (adderqueue.length > 0) {
+			coutput = adderqueue.data[0];
+			dgraph_node_data(cg, g->graph, coutput).node.concrete.result = true;
+		}
+
+		if (a.type == CG_NODE_ABSTRACT_OUTPUT) {
+			dgraph_id temp;
+			/* This is an output node, so we also need to create
+			 * the concrete output */
+			n.type = CG_NODE_CONCRETE;
+			n.node.concrete.type = CG_NODE_CONCRETE_OUTPUT;
+			n.node.concrete.result = true;
+			dgraph_create_node(cg, g->graph, &temp, n);
+			dgraph_create_edge(cg, g->graph, &eid, e, id, temp);
+			dgraph_create_edge(cg, g->graph, &eid, e, coutput, temp);
+		}
+
+		vec_deinit(&adderqueue);
+
 
 	}
 }

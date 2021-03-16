@@ -664,7 +664,7 @@ KHASH_SET_INIT_INT64(dgraph_idset)
  * @param g dgraph_t(name)* pointing to a previously allocated graph
  * @param id the ID of the edge to access data for
  */
-#define dgraph_node_data(name, g, id) (dgraph_node_exists(name, g, id) ? g->nodes.data[id] : __extension__({errx(1, "invalid node ID %d", id); g->nodes.data[0];}))
+#define dgraph_node_data(name, g, id) (*((dgraph_node_exists(name, g, id) ? &(g->nodes.data[id]) : __extension__({errx(1, "invalid node ID %d", id); &(g->nodes.data[0]);}))))
 
 /**
  * @brief evaluates to the data attached to the specified edge ID

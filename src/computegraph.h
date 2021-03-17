@@ -69,9 +69,18 @@ typedef enum cg_node_concrete_type_t {
 
 typedef struct cg_node_concrete_t {
 	cg_node_concrete_type type;
-	/* if result is asserted, then this concrete node is a result node for
-	 * it's corresponding abstract node, otherwise it is intermediary */
+	/* If result is asserted, then this concrete node is a result node for
+	 * it's corresponding abstract node, otherwise it is intermediary. */
 	bool result;
+	/* These values are used to track which index into the input,
+	 * output, rodata, rwdata, and/or scratch arrays a given node
+	 * uses. Note that if a node does not use a given index, its value
+	 * will be uninitialized. */
+	int idx_input;
+	int idx_output;
+	int idx_rdval;
+	int idx_rwval;
+	int idx_scratch;
 } cg_node_concrete;
 
 typedef union cg_node_union_t {
@@ -129,5 +138,16 @@ void cg_generate_dot(cg* g, FILE* stream);
  * @param g
  */
 void cg_make_concrete(cg* g);
+
+/**
+ * @brief Generate the C code implementing the forward-pass of the given
+ * compute graph.
+ *
+ * @param g
+ * @param stream
+ * @param funcname
+ * @param datatype
+ */
+void cg_generate_forward_pass(cg* g, FILE* stream, const char* funcname, const char* datatype);
 
 #endif /* COMPUTEGRAPH_H */

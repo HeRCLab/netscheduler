@@ -72,7 +72,8 @@ int main (int argc, const char** argv) {
 	/* cg_edge e; */
 	/* dgraph_debug_dump(stderr, cg, g->graph, n, printf("%s\n", cg_node_type_to_string(n.type));, e, printf("\n");); */
 	cg_make_concrete(g);
-	cg_generate_dot(g, stdout);
+	/* cg_generate_dot(g, stdout); */
+	cg_generate_forward_pass(g, stdout, "forward_pass", "float");
 	cg_destroy(g);
 	exit(0);
 

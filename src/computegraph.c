@@ -311,3 +311,208 @@ void cg_make_concrete(cg* g) {
 	vec_deinit(&traverse);
 }
 
+static void cg_generate_forward_pass_node_result(cg* g, FILE* stream, dgraph_id id) {
+	if (dgraph_node_data(cg, g->graph, id).type == CG_NODE_CONCRETE) {
+		cg_node_concrete n = dgraph_node_data(cg, g->graph, id).node.concrete;
+		if (n.type == CG_NODE_CONCRETE_INPUT) {
+			fprintf(stream, "input[%d]", n.idx_input);
+
+		} else if (n.type == CG_NODE_CONCRETE_OUTPUT) {
+			fprintf(stream, "output[%d]", n.idx_output);
+
+		} else if (n.type == CG_NODE_CONCRETE_ADD) {
+			fprintf(stream, "scratch[%d]", n.idx_scratch);
+
+		} else if (n.type == CG_NODE_CONCRETE_MULT) {
+			fprintf(stream, "scratch[%d]", n.idx_scratch);
+
+		} else if (n.type == CG_NODE_CONCRETE_ROVAL) {
+			fprintf(stream, "rodata[%d]", n.idx_rdval);
+
+		} else if (n.type == CG_NODE_CONCRETE_RWVAL) {
+			fprintf(stream, "rwdata[%d]", n.idx_rwval);
+		}
+	}
+}
+
+static void cg_generate_forward_pass_node(cg* g, FILE* stream, dgraph_id id) {
+	dgraph_id ancestor_id;
+
+	if (dgraph_node_data(cg, g->graph, id).type != CG_NODE_CONCRETE) { return; }
+
+	cg_node_concrete n = dgraph_node_data(cg, g->graph, id).node.concrete;
+
+
+	if ((n.type == CG_NODE_CONCRETE_ADD) || (n.type == CG_NODE_CONCRETE_MULT)) {
+
+		char* oper = "";
+		if (n.type == CG_NODE_CONCRETE_ADD) { oper = " + "; }
+		if (n.type == CG_NODE_CONCRETE_MULT) { oper = " * "; }
+
+		fprintf(stream, "\t");
+		cg_generate_forward_pass_node_result(g, stream, id);
+		fprintf(stream, " = ");
+		int n_ancestors = 0;
+		dgraph_foreach_ancestor(cg, g->graph, id, ancestor_id,
+			if (dgraph_node_data(cg, g->graph, ancestor_id).type == CG_NODE_CONCRETE) {
+				n_ancestors ++;
+			}
+		);
+
+		int i = 0;
+		dgraph_foreach_ancestor(cg, g->graph, id, ancestor_id,
+			if (dgraph_node_data(cg, g->graph, ancestor_id).type == CG_NODE_CONCRETE) {
+				cg_generate_forward_pass_node_result(g, stream, ancestor_id);
+				if (i < n_ancestors - 1) {
+					fprintf(stream, " %s ", oper);
+				} else {
+					fprintf(stream, ";\n");
+				}
+				i++;
+			}
+		);
+	}
+
+	if (n.type == CG_NODE_CONCRETE_OUTPUT) {
+		fprintf(stream, "\t");
+		cg_generate_forward_pass_node_result(g, stream, id);
+		fprintf(stream, " = ");
+		dgraph_foreach_ancestor(cg, g->graph, id, ancestor_id,
+			if (dgraph_node_data(cg, g->graph, ancestor_id).type == CG_NODE_CONCRETE) {
+				cg_generate_forward_pass_node_result(g, stream, ancestor_id);
+			}
+		);
+		fprintf(stream, ";\n");
+	}
+}
+
+
+void cg_generate_forward_pass(cg* g, FILE* stream, const char* funcname, const char* datatype) {
+	int num_inputs = 0;
+	int num_outputs = 0;
+	int num_rdval = 0;
+	int num_rwval = 0;
+	int num_scratch = 0;
+	int num_nodes = 0;
+	dgraph_id id;
+
+	/* Count how many of each resource type we need to use, and also set up
+	 * indexes into the arrays we will create for each. */
+	dgraph_foreach_node(cg, g->graph, id,
+		if (dgraph_node_data(cg, g->graph, id).type == CG_NODE_CONCRETE) {
+			cg_node_concrete* n = &(dgraph_node_data(cg, g->graph, id).node.concrete);
+			if (n->type == CG_NODE_CONCRETE_INPUT) {
+				n->idx_input = num_inputs;
+				num_inputs++;
+			} else if (n->type == CG_NODE_CONCRETE_OUTPUT) {
+				n->idx_output = num_outputs;
+				num_outputs++;
+			} else if (n->type == CG_NODE_CONCRETE_ROVAL) {
+				n->idx_rdval = num_rdval;
+				num_rdval++;
+			} else if (n->type == CG_NODE_CONCRETE_RWVAL) {
+				n->idx_rwval = num_rwval;
+				num_rwval++;
+			} else if (n->type == CG_NODE_CONCRETE_MULT) {
+				n->idx_scratch = num_scratch;
+				num_scratch++;
+			} else if (n->type == CG_NODE_CONCRETE_ADD) {
+				n->idx_scratch = num_scratch;
+				num_scratch++;
+			}
+			num_nodes++;
+		}
+	);
+
+	/* Generate the function signature */
+	fprintf(stream, "void %s(", funcname);
+	fprintf(stream, "%s input[%d], ", datatype, num_inputs);
+	fprintf(stream, "%s output[%d]", datatype, num_outputs);
+	if (num_rdval > 0) { fprintf(stream, ", %s rodata[%d]", datatype, num_rdval); }
+	if (num_rwval > 0) { fprintf(stream, ", %s rwdata[%d]", datatype, num_rwval); }
+	fprintf(stream, ") {\n");
+
+	/* Generate the scratch array */
+	fprintf(stream, "\t%s scratch[%d];\n", datatype, num_scratch);
+
+	/* We will now perform a DFS traversal and generate the adders and
+	 * multipliers. By using DFS order, we guarantee that all data
+	 * dependencies for a node will be satisfied before its result is
+	 * computed.  */
+	vec_dgraph_id dfsqueue;
+	vec_init(&dfsqueue);
+	khash_t(dgraph_idset)* visited;
+	visited = kh_init(dgraph_idset);
+
+#define was_visited(_id) __extension__ ({ \
+			khint_t _k; \
+			_k = kh_get(dgraph_idset, visited, _id); \
+			(_k != kh_end(visited)); \
+		})
+#define mark_visited(_id) do { \
+		int r; \
+		kh_put(dgraph_idset, visited, _id, &r); \
+	} while(0);
+
+	/* We will iterate through every output node, then work back from
+	 * there. */
+	dgraph_foreach_node(cg, g->graph, id,
+		if (dgraph_node_data(cg, g->graph, id).type == CG_NODE_CONCRETE) {
+			cg_node_concrete* n = &(dgraph_node_data(cg, g->graph, id).node.concrete);
+			if (n->type == CG_NODE_CONCRETE_OUTPUT) {
+				vec_push(&dfsqueue, id);
+			}
+		}
+	);
+
+	/* Now the queue is populated with all the output nodes, so we can go
+	 * through each of their ancestors pushing nodes into the queue as we
+	 * go. */
+	dgraph_id cursor;
+	int unvisited_adjacent = 0;
+	for (;;) {
+		if (dfsqueue.length <= 0) { break; }
+		cursor = vec_pop(&dfsqueue);
+
+		// fprintf(stream, "\t/* visiting %d */\n", cursor);
+
+		unvisited_adjacent = 0;
+		dgraph_foreach_ancestor(cg, g->graph, cursor, id,
+			if (dgraph_node_data(cg, g->graph, id).type == CG_NODE_CONCRETE) {
+				if (!was_visited(id)) {
+					unvisited_adjacent++;
+				} else {
+					// fprintf(stream, "\t/* ancestor %d was visited already */\n", id);
+				}
+			}
+		);
+		// fprintf(stream, "\t/* %d unvisited adjacent nodes */\n", unvisited_adjacent);
+		if (unvisited_adjacent == 0) {
+			// fprintf(stream, "\t/* generating forward pass*/ \n");
+			mark_visited(cursor);
+			cg_generate_forward_pass_node(g, stream, cursor);
+		} else if (!was_visited(cursor)) {
+			// fprintf(stream, "\t/* push self %d */\n", cursor);
+			vec_push(&dfsqueue, cursor);
+		}
+		dgraph_foreach_ancestor(cg, g->graph, cursor, id,
+			if (dgraph_node_data(cg, g->graph, id).type == CG_NODE_CONCRETE) {
+				if (!was_visited(id)) {
+					// fprintf(stream, "\t/* push unvisited ancestor %d */\n", id);
+					vec_push(&dfsqueue, id);
+				}
+			}
+		);
+
+	}
+
+	fprintf(stream, "}\n");
+
+	vec_deinit(&dfsqueue);
+	kh_destroy(dgraph_idset, visited);
+
+#undef was_visited
+#undef mark_visited
+
+
+}

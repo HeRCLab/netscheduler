@@ -1,10 +1,8 @@
 #include "computegraph.h"
-#include <stdarg.h>
 
 DGRAPH_IMPL(cg, struct cg_node_t, struct cg_edge_t)
 
-cg* cg_init_mlp(int inputs, int outputs, int hidden, ...) {
-	va_list args;
+cg* cg_init_mlp(int inputs, int outputs, int hidden, int* sizes) {
 	int index;
 	int offset;
 	int layer;
@@ -32,9 +30,8 @@ cg* cg_init_mlp(int inputs, int outputs, int hidden, ...) {
 	}
 
 	/* Create the hidden layers. */
-	va_start(args, hidden);
 	for (int i = 0 ; i < hidden ; i ++) {
-		int layersize = va_arg(args, int);
+		int layersize = sizes[i];
 		layer++;
 		for (offset = 0 ; offset < layersize; offset++) {
 			n.type = CG_NODE_ABSTRACT;
@@ -55,7 +52,6 @@ cg* cg_init_mlp(int inputs, int outputs, int hidden, ...) {
 			index ++;
 		}
 	}
-	va_end(args);
 
 	/* And the output layer */
 	layer++;

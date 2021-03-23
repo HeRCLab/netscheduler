@@ -3,55 +3,66 @@
 
 #include <herc/argparse.h>
 
+#include <errno.h>
+
 #define STR_IMPL_(x) #x      
 #define STR(x) STR_IMPL_(x)
 
 
 int generate_main(int argc, const char** argv) {
 	const char* const usages[] = {
-		"schednet generate [options] OUTPUT_FILE",
-		"schednet generate [options]",
+		"schednet generate [options] HIDDEN_SIZE_1 HIDDEN_SIZE_2 ...",
 		NULL,
 	};
 
-	int num_layers = NUM_LAYERS;
-	int hidden_size = HIDDEN_LAYER_SIZE;
 	int num_inputs = NUM_INPUTS;
 	int num_outputs = NUM_OUTPUTS;
+	int dot = 0;
+
+	const char* fpname = "forward_pass";
+	const char* dtype = "float";
 
 	struct argparse_option options[] = {
 		OPT_HELP(),
-		OPT_INTEGER('l', "layers", &num_layers, "Number of hidden layers in the MLP (default: "STR(NUM_LAYERS)")", NULL, 0, 0),
-		OPT_INTEGER('H', "hidden_size", &hidden_size, "Number of nodes in the hidden layer(s) (default: "STR(HIDDEN_LAYER_SIZE)")", NULL, 0, 0),
-		OPT_INTEGER('I', "inputs", &num_inputs, "Number of inputs to the MLP (default:"STR(NUM_INPUTS)")", NULL, 0, 0),
-		OPT_INTEGER('O', "outputs", &num_outputs, "Number of outputs to the MLP (default:"STR(NUM_OUTPUTS)")", NULL, 0, 0),
+		OPT_STRING('f', "forward_name", &fpname, "Name of the function to generate for the forward pass. (default: 'forward_pass')", NULL, 0, 0),
+		OPT_STRING('d', "data_type", &dtype, "Data type to use for generated numeric values. (default: 'float')", NULL, 0, 0),
+		OPT_INTEGER('I', "inputs", &num_inputs, "Number of inputs to the MLP. (default:"STR(NUM_INPUTS)")", NULL, 0, 0),
+		OPT_INTEGER('O', "outputs", &num_outputs, "Number of outputs to the MLP. (default:"STR(NUM_OUTPUTS)")", NULL, 0, 0),
+		OPT_BOOLEAN('D', "dot", &dot, "Generate GraphViz dot output instead of C. (default: false)", NULL, 0, 0),
 		OPT_END(),
 	};
+
 
 	struct argparse argparse;
 	argparse_init(&argparse, options, usages, 0);
 
-	argparse_describe(&argparse, "\nGenerates C code implementing various MLP neural-network related functions based on provided parameters.", "");
+	argparse_describe(&argparse, "\nGenerates C code implementing various MLP neural-network related functions based on provided parameters.", "All remaining arguments should be integer layer sizes.");
 	argc = argparse_parse(&argparse, argc, argv);
 
-	node **layers;
-	layers = create_basic_network_dag(num_layers, num_inputs, hidden_size);
-	gen_c_code(layers,
-			num_layers,
-			num_inputs,
-			hidden_size,
-			num_outputs,
-			(argc > 0) ? argv[0] : "/dev/stdout"
-	);
+	if (argc == 0) {
+		fprintf(stderr, "You should specify at least one hidden layer. Refusing to proceed. Generating a network with no hidden layers is pointless.\nHINT: try running with -h for help.\n");
+		return 1;
+	}
 
-	gen_backwards_pass(layers,
-			num_layers,
-			num_inputs,
-			hidden_size,
-			num_outputs,
-			(argc > 0) ? argv[0] : "/dev/stdout"
-	);
+	int* sizes = malloc(sizeof(int) * argc);
+	for (int i = 0; i < argc; i++) {
+		errno = 0;
+		sizes[i] = strtol(argv[i], NULL, 10);
+		if (errno != 0) {
+			perror("strtol");
+			return 1;
+		}
+	}
 
+	/* temporary hack to mess with cg stuff */
+	cg* g = cg_init_mlp(num_inputs, num_outputs, argc, sizes);
+	cg_make_concrete(g);
+	if (dot) {
+		cg_generate_dot(g, stdout);
+	} else {
+		cg_generate_forward_pass(g, stdout, "forward_pass", "float");
+	}
+	cg_destroy(g);
 
 	return 0;
 }
@@ -66,16 +77,6 @@ void usage(void) {
 
 int main (int argc, const char** argv) {
 
-	/* temporary hack to mess with cg stuff */
-	cg* g = cg_init_mlp(1, 1, 2, 5, 3);
-	/* cg_node n; */
-	/* cg_edge e; */
-	/* dgraph_debug_dump(stderr, cg, g->graph, n, printf("%s\n", cg_node_type_to_string(n.type));, e, printf("\n");); */
-	cg_make_concrete(g);
-	/* cg_generate_dot(g, stdout); */
-	cg_generate_forward_pass(g, stdout, "forward_pass", "float");
-	cg_destroy(g);
-	exit(0);
 
 	if (argc < 2) { usage(); exit(1); }
 

@@ -107,12 +107,11 @@ typedef struct cg_edge_t {
  * @param inputs number of input neurons
  * @param outputs number of output neurons
  * @param hidden number of hidden layers
- * @param ... size of hidden layers, in order
+ * @param sizes size of hidden layers, in order
  *
  * @return
  */
-cg* cg_init_mlp(int inputs, int outputs, int hidden, ...);
-
+cg* cg_init_mlp(int inputs, int outputs, int hidden, int* sizes);
 
 /**
  * @brief Destroy a previously created compute graph, releasing all memory.

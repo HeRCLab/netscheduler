@@ -1,34 +1,36 @@
 #include "netscheduler.h"
 
-void connect_nodes (node *pred,node *succ) {
+void connect_nodes (node *pred,node *succ,int input_num) {
 	edge *myedge;
 
 	// add incoming edge
 	if (succ->in_edges == NULL) {
-		succ->in_edges = (edge *)malloc(sizeof(edge));
-		succ->in_edges->edge = pred;
-		succ->in_edges->next = NULL;
+		myedge = succ->in_edges = (edge *)malloc(sizeof(edge));
+		myedge->edge = pred;
+		myedge->next = NULL;
 	} else {
 		myedge = succ->in_edges;
 		while (myedge->next) myedge = myedge->next;
-		myedge->next = (edge *)malloc(sizeof(edge));
-		myedge->next->edge = pred;
-		myedge->next->next = NULL;
+		myedge = myedge->next = (edge *)malloc(sizeof(edge));
+		myedge->edge = pred;
+		myedge->next = NULL;
 	}
+	myedge->input_num = input_num;
 
 	// add outgoing edge
 	myedge = pred->out_edges;
 	if (myedge == NULL) {
-		pred->out_edges = (edge *)malloc(sizeof(edge));
-		pred->out_edges->edge = succ;
-		pred->out_edges->next = NULL;
+		myedge = pred->out_edges = (edge *)malloc(sizeof(edge));
+		myedge->edge = succ;
+		myedge->next = NULL;
 	} else {
-		edge *myedge = pred->out_edges;
+		myedge = pred->out_edges;
 		while (myedge->next) myedge = myedge->next;
-		myedge->next = (edge *)malloc(sizeof(edge));
-		myedge->next->edge = succ;
-		myedge->next->next = NULL;
+		myedge = myedge->next = (edge *)malloc(sizeof(edge));
+		myedge->edge = succ;
+		myedge->next = NULL;
 	}
+	myedge->input_num = input_num;
 
 }
 
@@ -43,6 +45,8 @@ node *create_node (node_type type,int id) {
 	mynode->asap_cycle = -1;
 	mynode->alap_cycle = -1;
 	mynode->scheduled_cycle = -1;
+	mynode->final_adder = 0;
+	mynode->delta_multiplier = 0;
 	
 	return mynode;
 }
@@ -67,14 +71,15 @@ void traverse_dag (node *layers[],
 		mynode = layers[0];
 	} else {
 		nodes_in_start_layer = num_outputs;
-		mynode = layers[num_layers-1];
+		mynode = layers[num_layers];
 	}
 	
 	// add first level
-	for (int i=0;i<nodes_in_start_layer;i++,mynode=mynode->next) {
+	while (mynode) {
 		// push start node
 		stack[tail]=mynode;
 		tail = (tail + 1) % QUEUESIZE;
+		mynode=mynode->next;
 	}
 	
 	// breadth-first traversal from each input or output (depending on direction)
@@ -92,7 +97,7 @@ void traverse_dag (node *layers[],
 		
 		while (myedge) {
 			if ((tail+1) % QUEUESIZE == head) {
-				fprintf(stderr,"Fatal: traversal queue size exceeded.\n");
+				fprintf(stderr,"Fatal: traversal queue size exceeded (currently at %d).\n",tail-head < 0 ? head-tail : tail-head);
 				exit(1);
 			}
 			stack[tail] = myedge->edge;
@@ -112,42 +117,48 @@ void node2dot (node *mynode,void *args) {
 	FILE *myFile = myargs->file;
 	char node_shape[1024];
 	
-	switch (mynode->type) {
-		case INPUT: strcpy(node_shape,"cds");break;
-		case OUTPUT: strcpy(node_shape,"cds");break;
-		case MULT: strcpy(node_shape,"box");break;
-		case ADD: strcpy(node_shape,"ellipse");break;
-		default: strcpy(node_shape,"star");break;
+	if (!mynode->flag) {
+		
+		switch (mynode->type) {
+			case INPUT: strcpy(node_shape,"cds");break;
+			case OUTPUT: strcpy(node_shape,"cds");break;
+			case MULT: strcpy(node_shape,"box");break;
+			case ADD: strcpy(node_shape,"ellipse");break;
+			case ADDBIAS: strcpy(node_shape,"square");break;
+			default: strcpy(node_shape,"star");break;
+		}
+		
+		// print node
+		fprintf (myFile,"%s_%d [shape=%s fontsize=10 label=\"%s_%d(%d,%d,%d)\"]\n",NODETYPE(mynode->type),
+																				 mynode->id,
+																				 node_shape,
+																				 NODETYPE(mynode->type),
+																				 mynode->id,
+																				 mynode->asap_cycle,
+																				 mynode->alap_cycle,
+																				 mynode->scheduled_cycle);
+		
+		// push successors onto stack
+		char rank_stmt[1024],node_name[1024];
+		snprintf(rank_stmt,1024,"{rank=same; ");
+
+		edge *myedge = mynode->in_edges;
+		while (myedge) {
+			fprintf (myFile,"%s_%d -> %s_%d\n",NODETYPE(myedge->edge->type),
+											   myedge->edge->id,
+											   NODETYPE(mynode->type),
+											   mynode->id);
+
+			snprintf (node_name,1024,"%s_%d; ",NODETYPE(myedge->edge->type),myedge->edge->id);
+			strcat(rank_stmt,node_name);
+
+			myedge = myedge->next;
+		}
+		strcat (rank_stmt,"}\n");
+		fprintf(myFile,"%s",rank_stmt);
+		
+		mynode->flag=1;
 	}
-	
-	// print node
-	fprintf (myFile,"%s_%d [shape=%s fontsize=10 label=\"%s_%d(%d,%d,%d)\"]\n",NODETYPE(mynode->type),
-																			 mynode->id,
-																			 node_shape,
-																			 NODETYPE(mynode->type),
-																			 mynode->id,
-																			 mynode->asap_cycle,
-																			 mynode->alap_cycle,
-																			 mynode->scheduled_cycle);
-	
-	// push successors onto stack
-	char rank_stmt[1024],node_name[1024];
-	snprintf(rank_stmt,1024,"{rank=same; ");
-
-	edge *myedge = mynode->in_edges;
-	while (myedge) {
-		fprintf (myFile,"%s_%d -> %s_%d\n",NODETYPE(myedge->edge->type),
-										   myedge->edge->id,
-										   NODETYPE(mynode->type),
-										   mynode->id);
-
-		snprintf (node_name,1024,"%s_%d; ",NODETYPE(myedge->edge->type),myedge->edge->id);
-		strcat(rank_stmt,node_name);
-
-		myedge = myedge->next;
-	}
-	strcat (rank_stmt,"}\n");
-	fprintf(myFile,"%s",rank_stmt);
 }
 
 void gen_dot (node *layers[],
@@ -173,49 +184,235 @@ void gen_dot (node *layers[],
 
 	argstype myargs = {.file = myFile};
 	
+	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,clear_flags,FROM_END);
 	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,node2dot,FROM_END);
 
 	fprintf(myFile,"}\n");
 	fclose(myFile);
 }
 
+int node_is_final_adder (node *mynode) {
+	if (mynode->type == ADD && mynode->out_edges->edge->type == MULT) return 1;
+	return 0;
+}
+
 void gen_c_declarations (node *mynode,void *args) {
 	FILE *myFile = ((argstype *)args)->file;
+	int shift_reg_depth = ((argstype *)args)->shift_reg_depth;
+	int gen_backwards = ((argstype *)args)->gen_backwards;
+	int secondforward = ((argstype *)args)->secondforward;
 	
-	if (!mynode->flag && (mynode->type==ADD || mynode->type==MULT)) {
-		fprintf (myFile,"node%d,",mynode->id);
+	if (!mynode->flag) {
+		if	((mynode->type==ADD || mynode->type==MULT || mynode->type==ADDBIAS) || (gen_backwards && mynode->type==INPUT)) {
+			// the current output of the DAG node (input, adder, etc.)
+			if (gen_backwards==0 && secondforward==0)
+				fprintf (myFile,"node%d,",mynode->id);
+			else if (secondforward)
+				fprintf (myFile,"node_sf%d,",mynode->id);
+			else if (gen_backwards)
+				fprintf (myFile,"node_bp%d,",mynode->id);
+			
+			/* // the historical outputs of each node, needed only for the outputs of neurons
+			if (node_is_final_adder(mynode)) {
+				for (int i=0;i<shift_reg_depth;i++) {
+					fprintf (myFile,"node%d_d%d,",mynode->id,i);
+				}
+			} */
+		}
 		mynode->flag=1;
 	}
 }
 
+node *get_correspondance_node (node *mynode,node **forwardprop) {
+	// given a backprop node, find corresponding forward prop node
+	int backlayer = mynode->layer;
+	int forwardlayer = NUM_LAYERS - backlayer - 1;
+	int neuron = mynode->neuron;
+	
+	// walk across layer
+	node *forward_node = forwardprop[forwardlayer];
+	for (int i=0;i<neuron;i++) {
+		forward_node = forward_node->next;
+	}
+	return forward_node;
+}
+
 void gen_c_statement (node *mynode,void *args) {
+	char suffix[1024];
 	edge *myedge = mynode->in_edges;
 	FILE *myFile = ((argstype *)args)->file;
-	
+	int shift_reg_depth = ((argstype *)args)->shift_reg_depth;
+	int backprop = ((argstype *)args)->backprop;
+	node *output_layer = ((argstype *)args)->output_layer;
+	node **forwardprop = ((argstype *)args)->forwardprop;
+	node **backwardprop = ((argstype *)args)->backwardprop;
+	int layer = mynode->layer;
+	int secondforward = ((argstype *)args)->secondforward;
+
 	// only generate statements for add and multiply
-	if ((!mynode->flag) && (mynode->type == ADD || mynode->type == MULT)) {
-	
-		// check for special identifiers for inputs and outputs
-		if (myedge->edge->type == INPUT)
-			fprintf(myFile,"\t\tnode%d = input%d[i] ",mynode->id,myedge->edge->id);
-		else if (mynode->out_edges->edge->type == OUTPUT)
-			fprintf(myFile,"\t\toutput%d[i] = node%d ",mynode->id,myedge->edge->id);
-		else
-			fprintf(myFile,"\t\tnode%d = node%d ",mynode->id,myedge->edge->id);
-		
-		// finish statement
-		myedge = myedge->next;
-		switch (mynode->type) {
-			 case ADD:
-				fprintf (myFile,"+ node%d;\n",myedge->edge->id);
-				break;
-			 case MULT:
-				fprintf (myFile,"* coeff%d[%d][%d];\n",mynode->layer,mynode->neuron,mynode->input_number);
-				break;
+	if (!mynode->flag) {
+
+		// check if all predecessors have been generated
+		int deps_satisfied=1;
+		edge *pred = mynode->in_edges;
+		while (pred) {
+			if (!pred->edge->flag) deps_satisfied=0;
+			pred=pred->next;
 		}
 	
-		mynode->flag = 1;
+		// make sure dependencies are satisfied before generating code for this node
+		if (deps_satisfied) {
+
+			// establish a suffix for backprop nodes
+			if (secondforward)
+				strcpy(suffix,"_sf");
+			else if (backprop)
+				strcpy(suffix,"_bp");
+			else
+				strcpy(suffix,"");
+
+			// CASE 1:  forward prop output node
+			if (mynode->type == OUTPUT && !backprop && !secondforward) {
+				if (secondforward) return;
+				fprintf(myFile,"\toutput%s%d = node%s%d;\n",suffix,mynode->id,suffix,myedge->edge->id);
+			
+			// CASE 2:  backward prop delta multiplier node
+			} else if (mynode->delta_multiplier) {
+				node *fpn = get_correspondance_node(mynode,forwardprop);
+				//node *fpn = forwardprop[NUM_LAYERS-layer];
+				
+				if (fpn->type==INPUT)
+					fprintf(myFile,"\tnode_bp%d = node_bp%d * node%d_d%d;\n",
+								mynode->id,
+								mynode->in_edges->edge->id,
+								fpn->id,
+								shift_reg_depth);
+				else
+					fprintf(myFile,"\tnode_bp%d = node_bp%d * node_sf%d;\n",
+								mynode->id,
+								mynode->in_edges->edge->id,
+								fpn->id);
+			
+			// CASE 3:  backprop input node (which represents an output node in the forward prop)
+			} else if (mynode->type == INPUT && backprop) {
+				// SHOULD BE OUTPUT OF SECOND FORWARD PASS!
+				fprintf (myFile,"\tnode_bp%d = (node_sf%d - input%d);\n",
+							mynode->id,
+							get_correspondance_node(mynode,forwardprop)->id,
+							HISTORY_LENGTH-1);
+				
+				// update biases
+				fprintf (myFile,"\tbias_fp%d[%d] -= LEARN_RATE * node_bp%d;\n",NUM_LAYERS-1,mynode->neuron,mynode->id);
+				fprintf (myFile,"\tbias_bp%d[%d] -= LEARN_RATE * node_bp%d;\n",NUM_LAYERS-1,mynode->neuron,mynode->id);
+				
+				// update weights of output node coefficients
+				node *mynode_forward = get_correspondance_node(mynode,forwardprop);
+				
+			// CASE 4:  all other nodes, assuming incoming edges
+			} else if (myedge && !(mynode->type==OUTPUT && secondforward)) {
+				// ** begin the statement
+				if (myedge->edge->type == INPUT) {
+					if (secondforward)
+						fprintf(myFile,"\tnode%s%d = node%d_d%d ",
+							suffix,mynode->id,myedge->edge->id,FORECAST_LENGTH);
+					else if (backprop)
+						fprintf (myFile,"\tnode%s%d = node_bp%d ",suffix,mynode->id,myedge->edge->id);
+					else
+						fprintf(myFile,"\tnode%s%d = input%d ",suffix,mynode->id,myedge->edge->id);
+				} else {
+					if (!backprop || mynode->type != OUTPUT) {
+						fprintf(myFile,"\tnode%s%d = node%s%d ",suffix,mynode->id,suffix,myedge->edge->id);
+					}
+				}
+				// ** finish the statement
+				myedge = myedge->next;
+				switch (mynode->type) {
+					case ADD:
+						fprintf (myFile,"+ node%s%d;\n",suffix,myedge->edge->id);
+						
+						// update bias in forward and backprop
+						if (backprop && mynode->final_adder) {
+							fprintf (myFile,"\tbias_bp%d[%d] -= LEARN_RATE * node_bp%d;\n",NUM_LAYERS-mynode->layer,mynode->neuron,mynode->id);
+							fprintf (myFile,"\tbias_fp%d[%d] -= LEARN_RATE * node_bp%d;\n",NUM_LAYERS-mynode->layer,mynode->neuron,mynode->id);
+						}
+						
+						break;
+					case MULT:
+						if (backprop)
+							fprintf (myFile,"* coeff_bp%d[%d][%d];\n",NUM_LAYERS - mynode->layer,mynode->input_number,mynode->neuron);
+						else
+							fprintf (myFile,"* coeff_fp%d[%d][%d];\n",mynode->layer,mynode->neuron,mynode->input_number);
+						
+						break;
+					case ADDBIAS:
+						if (backprop)
+							fprintf (myFile,"+ bias_bp%d[%d];\n",mynode->layer,mynode->neuron);
+						else
+							fprintf (myFile,"+ bias_fp%d[%d];\n",mynode->layer,mynode->neuron);
+						break;
+				}
+			}
+
+			// for backprop, add weight update code
+			if (backprop && mynode->final_adder && !secondforward) {
+			// find predecessor of the corresponding node in forward pass
+				
+				// for each outgoing edge (incoming edge in forward prop)
+				
+				int layer_in_forward_pass = NUM_LAYERS-(mynode->layer);
+				
+				// update biases
+				if (NUM_LAYERS-mynode->layer-1)
+					fprintf (myFile,"\tbias_fp%d[%d] -= LEARN_RATE * node_bp%d;\n"
+									"\tbias_bp%d[%d] -= LEARN_RATE * node_bp%d;\n",
+										NUM_LAYERS-mynode->layer-1,
+										mynode->neuron,
+										mynode->id,
+										NUM_LAYERS-mynode->layer-1,
+										mynode->neuron,
+										mynode->id);
+				
+				for (node *n=forwardprop[layer_in_forward_pass];n;n=n->next) {
+				
+					if (get_correspondance_node(mynode,forwardprop)->type==INPUT)
+						fprintf (myFile,
+							"\tcoeff_fp%d[%d][%d] -= LEARN_RATE * node_bp%d * node%d_d%d;\n"
+							"\tcoeff_bp%d[%d][%d] -= LEARN_RATE * node_bp%d * node%d_d%d;\n",
+							NUM_LAYERS-mynode->layer, // original layer
+							n->neuron, // edge number
+							mynode->neuron, // output number
+							get_correspondance_node(n,backwardprop)->id,
+							get_correspondance_node(mynode,forwardprop)->id,
+							shift_reg_depth,
+							NUM_LAYERS-mynode->layer, // original layer
+							n->neuron, // edge number
+							mynode->neuron, // output number
+							get_correspondance_node(n,backwardprop)->id,
+							get_correspondance_node(mynode,forwardprop)->id,
+							shift_reg_depth);
+					else
+						fprintf (myFile,
+							"\tcoeff_fp%d[%d][%d] -= LEARN_RATE * node_bp%d * node_sf%d;\n"
+							"\tcoeff_bp%d[%d][%d] -= LEARN_RATE * node_bp%d * node_sf%d;\n",
+							NUM_LAYERS-mynode->layer, // original layer
+							n->neuron, // edge number
+							mynode->neuron, // output number
+							get_correspondance_node(n,backwardprop)->id,
+							get_correspondance_node(mynode,forwardprop)->id,
+							NUM_LAYERS-mynode->layer, // original layer
+							n->neuron, // edge number
+							mynode->neuron, // output number
+							get_correspondance_node(n,backwardprop)->id,
+							get_correspondance_node(mynode,forwardprop)->id);
+						
+					//e++;
+				}
+			}
+
+			mynode->flag = 1;
+		}
 	}
+	
 }
 
 void clear_flags (node *mynode,void *args) {
@@ -225,7 +422,7 @@ void clear_flags (node *mynode,void *args) {
 void compute_functional_utilization(node **layers,int num_layers,int num_inputs,int num_outputs,argstype *myargs) {
 	
 	// assume this is a safe way to find the maximum possible latency
-	int max_latency = layers[num_layers-1]->alap_cycle;
+	int max_latency = layers[num_layers]->alap_cycle;
 	
 	// allocate and initialize function unit usage counters
 	myargs->add_use = (int *)malloc(sizeof(int) * max_latency);
@@ -249,6 +446,82 @@ void inc_functional_utilization (node *mynode,void *args) {
 	
 		mynode->flag=1;
 	}
+}
+
+void generate_hls_wrapper_code(char *filename,node **layers) {
+	char tmp[1024];
+	FILE *myFile = fopen(filename,"w+");
+	
+	if (!myFile) {
+		snprintf(tmp,1024,"Error opening \"%s\" for write",filename);
+		perror(tmp);
+		exit(1);
+	}
+	
+	fprintf(myFile,"#include \"hls_stream.h\"\n"
+				   "#include \"hls_math.h\"\n"
+				   "#include \"shift_reg.h\"\n"
+				   "#include \"ap_fixed.h\"\n"
+				   "#include <cassert>\n\n");
+	
+	#ifdef DATATYPE_BASE
+	fprintf(myFile,"typedef %s %s;\n\n",DATATYPE_BASE,DATATYPE);
+	#endif
+	
+	fprintf (myFile,"#define\tHISTORY_LENGTH\t%d\n\n"
+					"void mynetwork (",HISTORY_LENGTH);
+					
+	for (int i=0;i<HISTORY_LENGTH;i++) {
+		if (i) fprintf(myFile,",");
+		fprintf(myFile,"const %s input%d",DATATYPE,i);
+	}
+	
+	fprintf(myFile,", %s &output%d);\n",DATATYPE,layers[NUM_LAYERS-1]->id);
+					
+	fprintf (myFile,"template<\n"
+					"\tunsigned int shift_reg_depth\n"
+					">\n"
+					"void network_wrapper(\n"
+					"\thls::stream<%s>& input0,\n"
+					"\thls::stream<%s>& output0\n"
+					") {\n\n"
+					"\tstatic ShiftRegister<%s, shift_reg_depth> sreg;\n\n"
+					"\tif (!input0.empty()) {\n"
+					"\t\tsreg.shift_in(input0);\n\n",DATATYPE,DATATYPE,DATATYPE);
+					
+	
+	fprintf (myFile,"\t\tfloat ");
+	
+	for (int i=0;i<HISTORY_LENGTH;i++) {
+		if (i) fprintf(myFile,",");
+		fprintf(myFile,"in%d",i);
+	}
+	
+	fprintf (myFile,";\n\t\%s out0;\n\n",DATATYPE);
+	
+	for (int i=0;i<HISTORY_LENGTH;i++) {
+		fprintf(myFile,"\t\tin%d = sreg[%d];\n",i,i);
+	}
+	
+	fprintf (myFile,"\n\t\tmynetwork(");
+	
+	for (int i=0;i<HISTORY_LENGTH;i++) {
+		if (i) fprintf(myFile,",");
+		fprintf(myFile,"in%d",i);
+	}
+	
+	fprintf (myFile,",out0);\n\n");
+	
+	fprintf (myFile,"\t\toutput0.write(out0);\n\n");
+	
+	fprintf (myFile,"\t}\n}\n\n"
+					"void streaming_toplevel(\n"
+					"\thls::stream<%s>& input0,"
+					"\thls::stream<%s>& output0\n"
+					") {\n"
+					"#pragma HLS LATENCY max=1\n"
+					"\tnetwork_wrapper<HISTORY_LENGTH>(input0, output0);\n"
+					"}\n",DATATYPE,DATATYPE);
 }
 
 void count_registers (node *mynode,void *args) {
@@ -277,10 +550,43 @@ void count_registers (node *mynode,void *args) {
 	}
 }
 
+void gen_shift_registers (node *mynode,void *args) {
+	int depth = ((argstype *)args)->shift_reg_depth;
+	FILE *myFile = ((argstype *)args)->file;
+	
+	if (!mynode->flag) {
+		// check if this is a final adder
+		if (mynode->final_adder || mynode->type==INPUT) {
+			// print declarations
+			fprintf(myFile,"\tstatic %s ",DATATYPE);
+			for (int i=0;i<=depth;i++) {
+				if (i) fprintf(myFile,",");
+				fprintf(myFile,"node%d_d%d",mynode->id,i);
+			}
+			fprintf(myFile,";\n");
+			
+			// print shift register
+			for (int i=depth-1;i>=-1;i--) {
+				if (i>=0)
+					fprintf(myFile,"\tnode%d_d%d = node%d_d%d;\n",mynode->id,i+1,
+																  mynode->id,i);
+				else if (mynode->type == INPUT)
+					fprintf(myFile,"\tnode%d_d%d = input%d;\n",mynode->id,i+1,
+															  mynode->id);
+				else	
+					fprintf(myFile,"\tnode%d_d%d = node%d;\n",mynode->id,i+1,
+																  mynode->id);
+			}
+		}
+		
+		mynode->flag=1;
+	}
+}
+
 void tabulate_registers (node *layers[],int num_layers,int num_inputs,int num_outputs) {
 	register_table myregistertable;
 	
-	int num_cycles = layers[num_layers-1]->scheduled_cycle;
+	int num_cycles = layers[num_layers]->scheduled_cycle;
 	
 	// allocate table
 	myregistertable.register_usage_by_cycle = (int *)malloc(sizeof(int)*num_cycles);
@@ -311,65 +617,218 @@ void tabulate_registers (node *layers[],int num_layers,int num_inputs,int num_ou
 	}
 }
 
-void gen_c_code (node **layers,
-						int num_layers,
-						int num_inputs,
-						int hidden_layer_size,
-						int num_outputs,
-						char *filename) {
-							
-	FILE *myFile = fopen(filename,"w+");
-	char str[1024];
+void gen_debugging_statements (node *layers[],FILE *outFile) {
+	int mlp_topology[] = MLP_TOPOLOGY;
+	node *mynode;
 	
+	for (int i=0;i<NUM_LAYERS;i++) {
+		mynode = layers[i];
+		fprintf(outFile,"\tprintf(\"LAYER %d:\\n\");\n",i);
+		for (int j=0;j<mlp_topology[i];j++) {
+			fprintf(outFile,"\tprintf(\"node %d (node%d) = %%0.4e\\n\",%s%d);\n",j,mynode->id,NODETYPE_CODE(mynode->type),mynode->id);
+			mynode = mynode->next;
+		}
+	}
+}
+
+void gen_c_code (node **layers,
+						node **back_layers,
+						int num_layers,
+						int *layer_sizes,
+						FILE *myFile,
+						int gen_backprop,
+						int forecast_length,
+						struct layer *trainer_layers) {
+							
+	// headers
+#ifdef GEN_NETWORK_DEBUG
+	fprintf(myFile,"#include <stdio.h>\n#include \"ap_fixed.h\"\n\n");
+#endif
+
+	fprintf(myFile,"#include \"ap_fixed.h\"\n\n");
+	
+	fprintf(myFile,"#define	LEARN_RATE	(%s)%f\n\n",DATATYPE,LEARNING_RATE);
+	
+#ifdef DATATYPE_BASE
+	fprintf(myFile,"typedef %s %s;\n\n",DATATYPE_BASE,DATATYPE);
+#endif
+	
+	// STEP 1:  GENERATE FUNCTION PROTOTYPE
 	fprintf(myFile,"void mynetwork (");
 	
-	// print input arguments
+	// STEP 2:  GENERATE INPUT ARGUMENTS
+	int num_inputs = layer_sizes[0];
 	node *mynode = layers[0];
 	for (int i=0;i<num_inputs;i++) {
-		fprintf(myFile,"const float input%d[1024]",mynode->id);
-		fprintf(myFile,",");
+		fprintf(myFile,"const %s input%d,",DATATYPE,mynode->id);
 		mynode = mynode->next;
 	}
 	
-	// print output arguments
-	mynode = layers[num_layers-1];
+	int num_outputs = layer_sizes[NUM_LAYERS-1];
+
+	// STEP 3:  GENERATE OUTPUT ARGUMENTS
+	mynode = layers[num_layers];
 	for (int i=0;i<num_outputs;i++) {
-		fprintf(myFile,"float output%d[1024]",mynode->in_edges->edge->id);
+		fprintf(myFile,"%s &output%d",DATATYPE,mynode->id);
 		if (i!=num_outputs-1) fprintf(myFile,",");
 		mynode = mynode->next;
 	}
 		
 	fprintf(myFile,") {\n");
 	
-	if (!myFile) {
-		snprintf (str,1024,"ERROR: opening \"%s\" for write",filename);
-		perror(str);
-		exit(1);
+	// STEP 4:  GENERATE COEFFICIENTS WITH INITIALIZATION
+	for (int i=1;i<num_layers;i++) {
+		fprintf(myFile,"\tstatic %s coeff_fp%d[%d][%d]={",DATATYPE,i,layer_sizes[i],layer_sizes[i-1]);
+		
+		for (int j=0;j<layer_sizes[i];j++) {
+			fprintf(myFile,"{");
+			for (int k=0;k<layer_sizes[i-1];k++) {
+				if (k!=0) fprintf(myFile,",");
+				fprintf(myFile,"%0.10e",trainer_layers[i].weights[j*num_inputs+k]);
+			}
+			if (j==layer_sizes[i]-1) fprintf(myFile,"}\n"); else fprintf(myFile,"},\n");
+		}
+		fprintf(myFile,"};\n");
+	}
+	for (int i=1;i<num_layers;i++) {
+		fprintf(myFile,"\tstatic %s coeff_bp%d[%d][%d]={",DATATYPE,i,layer_sizes[i],layer_sizes[i-1]);
+		
+		for (int j=0;j<layer_sizes[i];j++) {
+			fprintf(myFile,"{");
+			for (int k=0;k<layer_sizes[i-1];k++) {
+				if (k!=0) fprintf(myFile,",");
+				fprintf(myFile,"%0.10e",trainer_layers[i].weights[j*num_inputs+k]);
+			}
+			if (j==layer_sizes[i]-1) fprintf(myFile,"}\n"); else fprintf(myFile,"},\n");
+		}
+		fprintf(myFile,"};\n");
 	}
 	
-	argstype myargs = {.file = myFile};
+	// STEP 5:  GENERATE BIASES WITH INITIALIZATION
+	for (int i=1;i<num_layers;i++) {
+		fprintf(myFile,"\tstatic %s bias_fp%d[%d]={",DATATYPE,i,layer_sizes[i]);
+		for (int j=0;j<layer_sizes[i];j++) {
+			if (j) fprintf(myFile,",");
+			fprintf(myFile,"%0.0f",trainer_layers[i].biases[j]);
+		}
+		fprintf(myFile,"};\n");
+	}
+	for (int i=1;i<num_layers;i++) {
+		fprintf(myFile,"\tstatic %s bias_bp%d[%d]={",DATATYPE,i,layer_sizes[i]);
+		for (int j=0;j<layer_sizes[i];j++) {
+			if (j) fprintf(myFile,",");
+			fprintf(myFile,"%0.0f",0.f/*trainer_layers[i].biases[j]*/);
+		}
+		fprintf(myFile,"};\n");
+	}
 	
-	// add the variable declarations
-	fprintf(myFile,"\tfloat ");
-	
-	// clear to flags, so we declare each variable only once
+	// STEP 6:  GENERATE FORWARD PROP VARIABLES
+	fprintf(myFile,"\%s ",DATATYPE);
+	// set up the traversal arguments
+	argstype myargs = {.file = myFile,
+					   .gen_backwards=0,
+					   .secondforward=0,
+					   .output_layer=layers[num_layers],
+					   .num_layers = num_layers,
+					   .shift_reg_depth = forecast_length,
+					   .forwardprop = layers,
+					   .backwardprop = back_layers};
+					   
+	// slight hack to avoid unnecessary delay lines when not training online
+#ifndef ONLINE_TRAINING
+	myargs.shift_reg_depth=0;
+#endif
+	// clear flags, so we declare each variable only once
 	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,clear_flags,FROM_START);
-	
-	// generate the intermediate value declarations
 	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,gen_c_declarations,FROM_START);
+	fseek(myFile,-1,SEEK_CUR);
+	fprintf(myFile,";\n");
 	
-	// add the coefficient array
-	fprintf(myFile,"coeff1[%d][%d],coeff2[%d][%d];\n",hidden_layer_size,num_inputs,num_outputs,hidden_layer_size);
-	fprintf(myFile,"\n");
+	if (gen_backprop) {
+		// STEP 6A:  GENERATE SECONDARY FORWARD PROP VARIABLES
+		fprintf(myFile,"\t%s ",DATATYPE);
+		myargs.secondforward=1;
+		traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,clear_flags,FROM_START);
+		traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,gen_c_declarations,FROM_START);
+		fseek(myFile,-1,SEEK_CUR);
+		fprintf(myFile,";\n");
+	}
 	
-	// generate the loop
-	//fprintf(myFile,"\tfor (int i=0;i<1024;i++) {\n#pragma HLS PIPELINE II=1\n");
-	fprintf(myFile,"\tfor (int i=0;i<1024;i++) {\n#pragma HLS LATENCY max=1\n");
+	// delete previous comma
+	fseek(myFile,-1,SEEK_CUR);
+	fprintf(myFile,";\n");
+	
+#ifdef ONLINE_TRAINING
+	// STEP 6B:  GENERATE BACKPROP VARIABLES
+	if (gen_backprop) {
+		
+		fprintf(myFile,"\t%s ",DATATYPE);
+		
+		myargs.secondforward=0;
+		myargs.gen_backwards=1;
+		// generate backprop and weight update code
+		traverse_dag(back_layers,num_layers,num_inputs,num_outputs,(void *)&myargs,clear_flags,FROM_START);
+		traverse_dag(back_layers,num_layers,num_outputs,num_inputs,(void *)&myargs,gen_c_declarations,FROM_START);
+		
+		// delete previous comma
+		fseek(myFile,-1,SEEK_CUR);
+		fprintf (myFile,";\n");
+		
+		/*
+		// generate the shift registers
+		traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,clear_flags,FROM_START);
+		traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,gen_shift_registers,FROM_START);
+		*/
+		
+		// GENERATE SHIFT REGISTERS FOR INPUTS
+		traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,clear_flags,FROM_START);
+		fprintf(myFile,"\n\t// generate shift registers for inputs\n");
+		mynode = layers[0];
+		for (int i=0;i<num_inputs;i++) {
+/* 			fprintf(myFile,"\tstatic %s ",DATATYPE);
+			for (int j=0;j<FORECAST_LENGTH;j++) {
+				fprintf(myFile,"input%d_d%d,",mynode->id,j+1);
+			}
+			// delete previous comma
+			fseek(myFile,-1,SEEK_CUR);
+			fprintf (myFile,";\n"); */
+			// generate the shift code
+			gen_shift_registers(mynode,(void *)&myargs);
+			mynode = mynode->next;
+		}
+	}
+#endif
+	
+	// STEP 7:  GENERATE CODE FOR FORWARD PASS
+	
+	fprintf(myFile,"\n\t// forward pass code\n");
+	myargs.backprop=0;
+	myargs.secondforward=0;
 	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,clear_flags,FROM_START);
 	traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,gen_c_statement,FROM_START);
-	fprintf(myFile,"\t}\n");
+	
+	if (gen_backprop) {
+		// STEP 8:  GENERATE CODE FOR SECONDARY FORWARD PASS
+		fprintf(myFile,"\n\t// secondary forward pass code\n");
+		myargs.backprop=0;
+		myargs.secondforward=1;
+		traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,clear_flags,FROM_START);
+		traverse_dag(layers,num_layers,num_inputs,num_outputs,(void *)&myargs,gen_c_statement,FROM_START);
+		
+		// STEP 9:  GENERATE BACKPROP PASS
+		fprintf(myFile,"\n\t// backpropagation code\n");
+		myargs.backprop=1;
+		myargs.secondforward=0;
+		traverse_dag(back_layers,num_layers,num_outputs,num_inputs,(void *)&myargs,clear_flags,FROM_START);
+		traverse_dag(back_layers,num_layers,num_outputs,num_inputs,(void *)&myargs,gen_c_statement,FROM_START);
+	}
+	
+	//fprintf(myFile,"\t}\n");
+	
+#ifdef GEN_NETWORK_DEBUG
+	gen_debugging_statements(layers,myFile);
+#endif
 	
 	fprintf(myFile,"}\n");
-	
-	fclose(myFile);
 }
+

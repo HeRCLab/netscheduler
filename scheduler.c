@@ -29,7 +29,7 @@ void schedule (node *layers[],int num_layers,int num_inputs,int num_outputs) {
 	traverse_dag (layers,num_layers,num_inputs,num_outputs,(void *)&myargs,set_asaps,FROM_START);
 	
 	// set latency slack
-	layers[num_layers-1]->alap_cycle = layers[num_layers-1]->asap_cycle + SLACK;
+	layers[num_layers]->alap_cycle = layers[num_layers]->asap_cycle + SLACK;
 	
 	// set alaps
 	traverse_dag (layers,num_layers,num_inputs,num_outputs,(void *)&myargs,set_alaps,FROM_END);
@@ -55,7 +55,7 @@ void emit_resource_constraints (node *mynode,void *args) {
 		
 		// next, check if there is any potential for using all of the resources
 		// in this cycle
-		if ((mynode->type == ADD && myargs->add_use[cycle] > NUM_ADDERS) ||
+		if (((mynode->type == ADD || mynode->type == ADDBIAS) && myargs->add_use[cycle] > NUM_ADDERS) ||
 			(mynode->type == MULT && myargs->mult_use[cycle] > NUM_MULTIPLIERS)) {
 		
 			// finally, check if the node can potentially be used in this cycle
@@ -119,7 +119,7 @@ void emit_op_constraints (node *mynode,void *args) {
 												mynode->id,
 												myargs->cycle);
 
-		if (mynode->type==ADD) fprintf (myargs->file,"+ %d n_%d_c_%d ",
+		if ((mynode->type==ADD) ||  (mynode->type==ADDBIAS)) fprintf (myargs->file,"+ %d n_%d_c_%d ",
 												myargs->cycle,
 												mynode->id,
 												myargs->cycle);
@@ -188,7 +188,7 @@ void generate_ilp_file (node **layers,
 						char *filename,
 						argstype *myargs) {
 							
-	int last_cycle = layers[num_layers-1]->alap_cycle;
+	int last_cycle = layers[num_layers]->alap_cycle;
 	FILE *myFile;
 	char str[1024];
 	
@@ -202,11 +202,11 @@ void generate_ilp_file (node **layers,
 	// add latency objective function
 	fprintf (myFile,"minimize\n\n");
 	
-	int earliest_completion = layers[num_layers-1]->asap_cycle;
-	int latest_completion = layers[num_layers-1]->alap_cycle;
+	int earliest_completion = layers[num_layers]->asap_cycle;
+	int latest_completion = layers[num_layers]->alap_cycle;
 	for (int i = earliest_completion;i<=latest_completion;i++) {
 		if (i!=earliest_completion) fprintf(myFile," + ");
-		fprintf (myFile,"%d n_%d_c_%d",i,layers[num_layers-1]->id,i);
+		fprintf (myFile,"%d n_%d_c_%d",i,layers[num_layers]->id,i);
 	}
 	fprintf(myFile,"\n");
 	
@@ -348,7 +348,7 @@ void apply_schedule (node *mynode,void *args) {
 	if (mynode->id == myargs->id) mynode->scheduled_cycle = myargs->cycle;
 }
 
-void solve_schedule (node **layers,
+int solve_schedule (node **layers,
 						int num_layers,
 						int num_inputs,
 						int num_outputs,
@@ -419,14 +419,22 @@ void solve_schedule (node **layers,
 			  FROM_START);
 	}
 	
+	// find schedule latency
+	int max_latency=0;
+	for (node *mynode = layers[num_layers]; mynode; mynode=mynode->next) {
+		if (mynode->scheduled_cycle > max_latency) max_latency = mynode->scheduled_cycle;
+	}
+	
 	fclose(myFile);
+	
+	return max_latency;
 }
 
 void incr_utilization (node *mynode,void *args) {
 	argstype *myargs = (argstype *)args;
 	
 	if (!mynode->flag) {
-		if (mynode->type == ADD)
+		if ((mynode->type == ADD) || (mynode->type == ADDBIAS))
 			myargs->add_scheduled_utilization[mynode->scheduled_cycle]++;
 		else if (mynode->type == MULT)
 			myargs->mult_scheduled_utilization[mynode->scheduled_cycle]++;
@@ -437,7 +445,7 @@ void incr_utilization (node *mynode,void *args) {
 
 void tabulate_functional_unit_utilization (node *layers[],int num_layers,int num_inputs,int num_outputs) {
 	// find scheduled latency
-	int max_cycle = layers[num_layers-1]->scheduled_cycle;
+	int max_cycle = layers[num_layers]->scheduled_cycle;
 	
 	// check if the scheduled succeeded
 	if (max_cycle<=0) return;
@@ -514,6 +522,11 @@ void printinst (node *mynode,void *myargs) {
 												mynode->id,
 												mynode->in_edges->edge->id);
 												
+			} else if (mynode->type==ADDBIAS) {
+				snprintf(str,1024,"%s %d %d bias",NODETYPE(mynode->type),
+												mynode->id,
+												mynode->in_edges->edge->id);
+												
 			} else if (mynode->type==INPUT) {
 				snprintf(str,1024,"load %d",mynode->id);
 			} else if (mynode->type==OUTPUT) {
@@ -528,7 +541,7 @@ void printinst (node *mynode,void *myargs) {
 }
 
 void tabulate_schedule_by_cycle (node *layers[],int num_layers,int num_inputs,int num_outputs) {
-	int num_cycles = layers[num_layers-1]->scheduled_cycle;
+	int num_cycles = layers[num_layers]->scheduled_cycle;
 	func_cycle myarg;
 	
 	// print table headers

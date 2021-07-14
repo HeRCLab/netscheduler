@@ -57,7 +57,7 @@ void online_training (struct layer *layers,SIGNAL mysignal_subsampled,SIGNAL mys
 void plot_results(SIGNAL mysignal_subsampled,SIGNAL mysignal_predicted);
 void eval_network(struct layer *layers,SIGNAL mysignal_subsampled,SIGNAL mysignal_predicted_offline);
 void free_signal (SIGNAL mysignal);
-int train_network (struct layer *layers,int num_layers,int *layer_sizes,int num_epochs,SIGNAL *input_signal,SIGNAL *output_signal_expected);
+int train_network (struct layer *layers,struct layer *initial_trainer_layers,int num_layers,int *layer_sizes,int num_epochs,SIGNAL *input_signal,SIGNAL *output_signal_expected);
 void gen_testbench (FILE *myFile,SIGNAL input_signal,SIGNAL output_signal_expected);
 
 #endif

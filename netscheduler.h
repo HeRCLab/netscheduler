@@ -18,7 +18,8 @@
 //#define GUROBI_PATH	"/usr/sbin"
 
 //#define	USE_SIGNAL_FILE	"Ivol_Acc_Load_data1_w3_NSTD.txt"
-#define USE_SIGNAL_FILE 	"Ivol_Acc_Load_data3_w3_w2_50per_STD.txt"
+//#define USE_SIGNAL_FILE 	"Ivol_Acc_Load_data3_w3_w2_50per_STD.txt"
+#define USE_SIGNAL_FILE		"data_set_3.txt"
 #define WRAPPER_FILENAME	"wrapper.cpp"
 #define SIGNAL_TIME_END	9.75f
 
@@ -44,7 +45,7 @@
 
 // MLP forecasting objective
 #define FORECAST_LENGTH		20
-#define HISTORY_LENGTH		50
+#define HISTORY_LENGTH		40
 
 // MLP topology (for DAG construction)
 #define	NUM_LAYERS		3  // input+hidden+output
@@ -73,7 +74,7 @@
 
 // data type for HLS
 // uncomment the first two lines for fixed point
-#define DATATYPE_BASE	"ap_fixed<5,0,AP_TRN,AP_WRAP>"
+#define DATATYPE_BASE	"ap_fixed<8,0,AP_TRN,AP_WRAP>"
 #define DATATYPE		"fxp_t"
 //#define DATATYPE	"float"
 

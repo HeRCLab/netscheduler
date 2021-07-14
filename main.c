@@ -14,6 +14,10 @@ int main () {
 	// NOTE: the trainer assumes MLP structure as defined in the #define macros
 	struct layer trainer_layers[NUM_LAYERS];
 	
+	// create another MLP so we can save the initial weights and biases for
+	// the FPGA implementation of the online trained MLP
+	struct layer initial_trainer_layers[NUM_LAYERS];
+	
 	// these is the argument container needed for DAG traversal
 	argstype myargs;
 	
@@ -79,7 +83,7 @@ int main () {
 	int gen_backprop=0;
 #endif
 
-	train_network (trainer_layers,NUM_LAYERS,layer_sizes,EPOCHS,&input_signal,&output_signal_expected);
+	train_network (trainer_layers,initial_trainer_layers,NUM_LAYERS,layer_sizes,EPOCHS,&input_signal,&output_signal_expected);
 
 	int forecast_length=FORECAST_LENGTH;
 	
@@ -94,8 +98,15 @@ int main () {
 	}
 	// generate C file
 	logmsg("Generating HLS code...");
+	
+#ifndef ONLINE_TRAINING
 	gen_c_code(layers,back_layers,NUM_LAYERS,layer_sizes,
 			   myFile,gen_backprop,forecast_length,trainer_layers);
+#else
+	gen_c_code(layers,back_layers,NUM_LAYERS,layer_sizes,
+			   myFile,gen_backprop,forecast_length,initial_trainer_layers);
+#endif
+
 	fclose(myFile);
 	
 	logmsg("Generating HLS wrapper...");

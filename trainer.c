@@ -343,7 +343,7 @@ void plot (SIGNAL mysignal,char *title,int n,float time,FILE *dump_file) {
 		exit(1);
 	}
 	
-	fclose(myplot);
+	pclose(myplot);
 }
 
 void free_signal (SIGNAL mysignal) {
@@ -398,10 +398,19 @@ SIGNAL prepare_training_data () {
 	return mysignal_subsampled;
 }
 
-int train_network (struct layer *layers,int num_layers,int *layer_sizes,int num_epochs,SIGNAL *input_signal,SIGNAL *output_signal_expected) {
+int train_network (struct layer *layers,struct layer *initial_trainer_layers,int num_layers,int *layer_sizes,int num_epochs,SIGNAL *input_signal,SIGNAL *output_signal_expected) {
 
 	*input_signal = prepare_training_data ();
 	initialize_mlp(layers,num_layers,layer_sizes);
+	initialize_mlp(initial_trainer_layers,num_layers,layer_sizes);
+	
+	// copy the initial state of the network to the "initial" version of the layers
+	// this way, we can initialize the weights in the hardware to match what they
+	// where before we performed training in the software
+	for (int i=1;i<NUM_LAYERS;i++) {
+		memcpy(initial_trainer_layers[i].weights,layers[i].weights,sizeof(float)*layer_sizes[i]*layer_sizes[i-1]);
+		memcpy(initial_trainer_layers[i].biases,layers[i].biases,sizeof(float)*layer_sizes[i]);
+	}
 	
 	int num_samples = (*input_signal)->points;
 

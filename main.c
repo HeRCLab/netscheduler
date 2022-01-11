@@ -26,6 +26,9 @@ int main () {
 	int layer_sizes[] = MLP_TOPOLOGY;
 	layers=create_basic_network_dag(NUM_LAYERS,layer_sizes,1,0);
 	
+	// forecast length--an important parameter
+	int forecast_length=FORECAST_LENGTH;
+	
 	srand(42);
 	
 #ifdef PERFORM_SCHEDULING
@@ -83,10 +86,6 @@ int main () {
 	int gen_backprop=0;
 #endif
 
-	train_network (trainer_layers,initial_trainer_layers,NUM_LAYERS,layer_sizes,EPOCHS,&input_signal,&output_signal_expected);
-
-	int forecast_length=FORECAST_LENGTH;
-	
 #ifdef GEN_HLS_CODE
 	logmsg("Creating HLS file...");
 	FILE *myFile=fopen ("network.cpp","w+");
@@ -99,21 +98,49 @@ int main () {
 	// generate C file
 	logmsg("Generating HLS code...");
 	
-#ifndef ONLINE_TRAINING
-	gen_c_code(layers,back_layers,NUM_LAYERS,layer_sizes,
-			   myFile,gen_backprop,forecast_length,trainer_layers);
-#else
-	gen_c_code(layers,back_layers,NUM_LAYERS,layer_sizes,
+#ifdef ONLINE_TRAINING
+
+	// this allocates and initializes the weights and biases
+	// normally this is done in train_network(), but we want to avoid calling that since
+	// we only need randomized weights and biases (as opposed to trained weights and biases)
+	initialize_mlp(initial_trainer_layers,NUM_LAYERS,layer_sizes);
+	
+	gen_header_file(NUM_LAYERS,layer_sizes,initial_trainer_layers);
+	gen_c_code_loop_version(layers,back_layers,NUM_LAYERS,layer_sizes,
 			   myFile,gen_backprop,forecast_length,initial_trainer_layers);
+
+#else
+	train_network (trainer_layers,
+			initial_trainer_layers,
+			NUM_LAYERS,
+			layer_sizes,
+			EPOCHS,
+			&input_signal,
+			&output_signal_expected);
+
+	// sanity check
+	check_predicted_signal(input_signal,output_signal_expected);
+	
+	gen_header_file(NUM_LAYERS,layer_sizes,trainer_layers);
+	gen_c_code_loop_version(layers,back_layers,NUM_LAYERS,layer_sizes,
+			   myFile,gen_backprop,forecast_length,trainer_layers);
+			   
+	validate_test_bench ("network.cpp",input_signal,output_signal_expected) {
 #endif
+
+
 
 	fclose(myFile);
 	
+	/*
 	logmsg("Generating HLS wrapper...");
 	generate_hls_wrapper_code(WRAPPER_FILENAME,layers);
+	*/
+	
+	
 #endif
 
-#ifdef GENERATE_TESTBENCH
+/* #ifdef GENERATE_TESTBENCH
 	logmsg("Generating HLS testbench...");
 	myFile=fopen("testbench.cpp","w+");
 	if (!myFile) {
@@ -122,7 +149,7 @@ int main () {
 	}
 	gen_testbench (myFile,input_signal,output_signal_expected);
 	fclose(myFile);
-#endif
+#endif */
 
 	return 0;
 }

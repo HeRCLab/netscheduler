@@ -448,7 +448,7 @@ void inc_functional_utilization (node *mynode,void *args) {
 	}
 }
 
-void generate_hls_wrapper_code(char *filename,node **layers) {
+void generate_hls_wrapper_code(const char *filename,node **layers) {
 	char tmp[1024];
 	FILE *myFile = fopen(filename,"w+");
 	
@@ -631,6 +631,283 @@ void gen_debugging_statements (node *layers[],FILE *outFile) {
 	}
 }
 
+void gen_header_file (int num_layers,
+					  int *layer_sizes,
+					  struct layer *trainer_layers) {
+						  
+	FILE *myFile = fopen("network.h","w+");
+	
+	if (!myFile) {
+		perror("network.h");
+		exit(1);
+	}
+	
+	// learning rate
+	fprintf(myFile,"#define	LEARN_RATE		(%s)%f\n",DATATYPE,LEARNING_RATE);
+	fprintf(myFile,"#define LEARN_RATE_DUT	(float)%f\n\n",LEARNING_RATE);
+	
+	// data type
+#ifdef DATATYPE_BASE
+	fprintf(myFile,"typedef %s %s;\n\n",DATATYPE_BASE,DATATYPE);
+#endif
+
+	// prototypes
+	fprintf(myFile,"#ifdef __cplusplus\n"
+				   "extern \"C\" {\n"
+				   "void mynetwork_dut (hls::stream<%s>& input_strm,hls::stream<%s>& output0_strm);\n"
+				   "}\n"
+				   "#endif\n\n","float","float");
+
+	fprintf(myFile,"void mynetwork (hls::stream<%s>& input_strm,hls::stream<%s>& output0_strm);\n\n",
+			DATATYPE,DATATYPE);
+
+	// initial weights
+	for (int i=1;i<NUM_LAYERS;i++) {
+	
+		fprintf(myFile,"#define LAYER%d_WEIGHTS	{",i);
+		
+		for (int j=0;j<layer_sizes[i];j++) {
+			if (layer_sizes[i] > 1) fprintf(myFile,"{");
+			for (int k=0;k<layer_sizes[i-1];k++) {
+				if (k!=0) fprintf(myFile,",");
+				fprintf(myFile,"%0.10e",trainer_layers[i].weights[j*HISTORY_LENGTH+k]);
+			}
+			if (j==layer_sizes[i]-1) fprintf(myFile,"}\\\n"); else fprintf(myFile,"},\\\n");
+		}
+		
+		if (layer_sizes[i] > 1) fprintf(myFile,"}\n");
+	}
+
+	//fprintf(myFile,"\n");
+	fclose(myFile);
+}
+
+void gen_c_code_loop_version (node **layers,
+						node **back_layers,
+						int num_layers,
+						int *layer_sizes,
+						FILE *myFile,
+						int gen_backprop,
+						int forecast_length,
+						struct layer *trainer_layers) {
+							
+							
+	char learn_rate_constant[1024];
+	
+	// headers
+#ifdef GEN_NETWORK_DEBUG
+	fprintf(myFile,"#include <stdio.h>\n");
+#endif
+
+	fprintf(myFile,"#include \"hls_stream.h\"\n"
+				   "#include \"ap_fixed.h\"\n"
+				   "#include \"network.h\"\n\n");
+	
+	for (int func=1;func>=0;func--) {
+	
+		// LEARN_RATE should be different for the hardware and software versions of the function
+		if (func==0)
+			strcpy(learn_rate_constant,"LEARN_RATE");
+		else
+			strcpy(learn_rate_constant,"LEARN_RATE_DUT");
+	
+		char data_type[1024],suffix[1024];
+		if (func==0) {
+			sprintf(data_type,"%s",DATATYPE);
+			strcpy(suffix,"");
+		} else {
+			strcpy(data_type,"float");
+			strcpy(suffix,"_dut");
+		}
+	
+		fprintf(myFile,"void mynetwork%s (hls::stream<%s>& input_strm,hls::stream<%s>& output0_strm) {\n\n",suffix,data_type,data_type);
+		
+		fprintf(myFile,"// limit the number of functional units to avoid oversubscription\n"
+					   "#pragma HLS ALLOCATION instances=mul limit=%d operation\n"
+					   "#pragma HLS ALLOCATION instances=add limit=%d operation\n"
+					   "#pragma HLS ALLOCATION instances=sub limit=%d operation\n\n",NUM_MULTIPLIERS,NUM_ADDERS,NUM_ADDERS);
+		
+		// GENERATE COEFFICIENTS WITH INITIALIZATION
+		// forward pass 1 coefficients
+
+		// we need three copies of the weights for this algorithm, so generate three identical
+		// structures with identical initializations.  the third copy needs only the output layer
+		// weights
+
+		for (int memory_copy=0;memory_copy<3;memory_copy++) {
+			for (int i=1;i<num_layers;i++) {
+				char suffix[20];
+				
+				// don't generate backups for layer 1
+				if (memory_copy==2 && i==1) continue;
+				
+				// suffixes for the three copies of the parameter memories
+				if (memory_copy==0)
+					strcpy(suffix,"fp");
+				else if (memory_copy==1)
+					strcpy(suffix,"bp");
+				else
+					strcpy(suffix,"backup");
+				
+				// use 1D array for layers with one neuron
+				if (layer_sizes[i] > 1)
+					fprintf(myFile,"\tstatic %s coeff_%s%d[%d][%d]=LAYER%d_WEIGHTS;\n",data_type,suffix,i,layer_sizes[i],layer_sizes[i-1],i);
+				else
+					fprintf(myFile,"\tstatic %s coeff_%s%d[%d]=LAYER%d_WEIGHTS;\n",data_type,suffix,i,layer_sizes[i-1],i);
+				/*
+				for (int j=0;j<layer_sizes[i];j++) {
+					if (layer_sizes[i] > 1) fprintf(myFile,"{");
+					for (int k=0;k<layer_sizes[i-1];k++) {
+						if (k!=0) fprintf(myFile,",");
+						fprintf(myFile,"%0.10e",trainer_layers[i].weights[j*HISTORY_LENGTH+k]);
+					}
+					if (j==layer_sizes[i]-1) fprintf(myFile,"}\n"); else fprintf(myFile,"},\n");
+				}
+				if (layer_sizes[i] > 1)
+					fprintf(myFile,"};\n");
+				else
+					fprintf(myFile,";\n");
+				*/
+				// pragmas
+				// NOTE: this is hacky--need a better way!
+				if (i==1) {
+					fprintf(myFile,"#pragma HLS ARRAY_PARTITION variable=coeff_%s%d cyclic factor=%d dim=2\n"
+								   "#pragma HLS RESOURCE variable=coeff_fp%d core=RAM_T2P_BRAM\n\n",
+								   suffix,i,layer_sizes[i-1] > LAYER1_MEMORY_BANKS ? LAYER1_MEMORY_BANKS : layer_sizes[i-1],i);
+				} else {
+					fprintf(myFile,"#pragma HLS ARRAY_PARTITION variable=coeff_%s%d complete dim=1\n",
+								   suffix,i);
+				}
+				
+				fprintf(myFile,"\tstatic %s bias_%s%d[%d]={",data_type,suffix,i,layer_sizes[i]);
+				for (int j=0;j<layer_sizes[i];j++) {
+					if (j) fprintf(myFile,",");
+					fprintf(myFile,"0.0");
+				}
+				fprintf(myFile,"};\n");
+				fprintf(myFile,"#pragma HLS ARRAY_PARTITION variable=bias_%s%d complete dim=1\n\n",suffix,i);
+			}
+		}
+		
+		// temporary variables
+		fprintf(myFile,"// temporary value\n"
+					   "\t%s neuron_out;\n\n"
+					   "// the shift register for remembering historical inputs, for both forward passes\n"
+					   "\tstatic %s inputs[%d];\n"
+					   "#pragma HLS ARRAY_PARTITION variable=inputs cyclic factor=%d dim=1\n\n",
+					   data_type,data_type,HISTORY_LENGTH+FORECAST_LENGTH,(HISTORY_LENGTH+FORECAST_LENGTH) > LAYER1_MEMORY_BANKS ? LAYER1_MEMORY_BANKS : (HISTORY_LENGTH+FORECAST_LENGTH));
+					   
+		// shift registers
+		fprintf(myFile,"// shift in the new input value\n"
+					   "\tshift_reg_loop: for (int i=%d;i>=1;i--) {\n"
+					   "#pragma HLS UNROLL\n"
+					   "\t\tinputs[i]=inputs[i-1];\n"
+					   "\t}\n"
+					   "\tinputs[0] = input_strm.read();\n\n",HISTORY_LENGTH+FORECAST_LENGTH-1);
+		
+		int ports = 2*(layer_sizes[0] > LAYER1_MEMORY_BANKS ? layer_sizes[0] : LAYER1_MEMORY_BANKS);
+		int expected_II = (layer_sizes[0] + ports - 1) / ports;
+		
+		// forward pass 1
+		fprintf(myFile,"// ********************************\n"
+					   "// forward pass 1\n"
+					   "// ********************************\n"
+					   "\t%s output_current = 0;\n"
+					   "\tfp1_loop: for (int i=0;i<%d;i++) {\n"
+					   "#pragma HLS PIPELINE II=%d\n"
+					   "\t\t%s sum = 0;\n"
+					   "\t\tinner_loop_fp1: for (int j=0;j<%d;j++) {\n"
+					   "\t\t\tsum += inputs[j] * coeff_fp1[i][j];\n"
+					   "\t\t}\n"
+					   "\t\tneuron_out = sum + bias_fp1[i];\n"
+					   "\t\toutput_current += coeff_fp2[i] * neuron_out; // output layer\n"
+					   "\t}\n"
+					   "\toutput_current += bias_fp2[0];\n"
+					   "\toutput0_strm.write(output_current);\n\n",
+					   data_type,layer_sizes[1],expected_II,data_type,layer_sizes[0]);
+					   
+		// forward pass 2
+		fprintf(myFile,"// ********************************\n"
+					   "// forward pass 2\n"
+					   "// ********************************\n"
+					   "\t%s bp_hidden[%d];\n"
+					   "#pragma HLS ARRAY_PARTITION variable=bp_hidden complete dim=1\n\n",
+					   data_type,layer_sizes[1]);
+					   
+		fprintf(myFile,"\t%s output_past = 0;\n"
+					   "\tfp2_loop: for (int i=0;i<%d;i++) {\n"
+					   "#pragma HLS PIPELINE II=%d\n"
+					   "\t\t%s sum = 0;\n"
+					   "\t\tinner_loop_fp2: for (int j=0;j<%d;j++) {\n"
+					   "\t\t\tsum += inputs[j+%d] * coeff_bp1[i][j];\n"
+					   "\t\t}\n"
+					   "\t\tneuron_out = bp_hidden[i] = sum + bias_fp1[i];\n"
+					   
+					   "\t\tcoeff_backup2[i] = coeff_bp2[i] * neuron_out;\n"
+					   "\t\toutput_past += coeff_backup2[i];\n"
+					   
+					   //"\t\toutput_past += coeff_bp2[i] * neuron_out;\n"
+					   "\t}\n\n"
+					   "\toutput_past += bias_bp2[0];\n\n",
+					   data_type,layer_sizes[1],expected_II,data_type,HISTORY_LENGTH,FORECAST_LENGTH);
+		
+		// backpropagation
+		fprintf(myFile,"\t// ********************************\n"
+					   "\t// backpropagation code\n"
+					   "\t// ********************************\n\n");
+
+		fprintf(myFile,"\t// delta for output neuron\n"
+					   "\t%s node_bp0 = (output_past - inputs[0]);\n\n",data_type);
+					   
+		fprintf(myFile,"\t%s deltas[%d];\n"
+					   "#pragma HLS ARRAY_PARTITION variable=deltas complete dim=1\n\n",
+					   data_type,layer_sizes[1]);
+					   
+		fprintf(myFile,"// ********************************\n"
+					   "// delta loop hidden layer\n"
+					   "// ********************************\n");
+					   
+		fprintf(myFile,"\tdelta_loop: for (int i=0;i<%d;i++) {\n"
+					   "#pragma HLS UNROLL\n"
+					   //"\t\tdeltas[i] = node_bp0 * coeff_backup2[i] * bp_hidden[i];\n"
+					   "\t\tdeltas[i] = node_bp0 * coeff_backup2[i];\n"
+					   "\t}\n\n",
+					   layer_sizes[1]);
+		
+		fprintf(myFile,"\t// ********************************\n"
+					   "\t// weight update loop output layer\n"
+					   "\t// ********************************\n");
+					   
+		fprintf(myFile,"\tupdate_output_layer_loop: for (int i=0;i<%d;i++) {\n"
+					   "#pragma HLS UNROLL\n"
+					   "\t\tcoeff_fp2[i] -= %s * node_bp0 * bp_hidden[i];\n"
+					   "\t\tcoeff_bp2[i] -= %s * node_bp0 * bp_hidden[i];\n"
+					   //"\t\tcoeff_backup2[i] -= %s * node_bp0 * bp_hidden[i];\n"
+					   "\t}\n"
+					   "\tbias_fp2[0] -= %s * node_bp0;\n"
+					   "\tbias_bp2[0] -= %s * node_bp0;\n\n",
+					   //layer_sizes[1],learn_rate_constant,learn_rate_constant,learn_rate_constant,learn_rate_constant,learn_rate_constant);
+					   layer_sizes[1],learn_rate_constant,learn_rate_constant,learn_rate_constant,learn_rate_constant);
+					   
+		fprintf(myFile,"// ********************************\n"
+					   "// weight update loop hidden layer\n"
+					   "// ********************************\n");
+					   
+		fprintf(myFile,"\tupdate_hidden_layer_outer_loop: for (int i=0;i<%d;i++) {\n"
+					   "#pragma HLS PIPELINE II=1\n"
+					   "\t\tupdate_hidden_layer_inner_loop: for (int j=0;j<%d;j++) {\n"
+					   "#pragma HLS UNROLL\n"
+					   "\t\t\tcoeff_fp1[i][j] -= %s * deltas[i] * inputs[j+%d];\n"
+					   "\t\t\tcoeff_bp1[i][j] -= %s * deltas[i] * inputs[j+%d];\n"
+					   "\t\t}\n"
+					   "\t\tbias_fp1[i] -= %s * deltas[i];\n"
+					   "\t\tbias_bp1[i] -= %s * deltas[i];\n"
+					   "\t}\n"
+					   "}\n\n",
+						layer_sizes[1],HISTORY_LENGTH,learn_rate_constant,FORECAST_LENGTH,learn_rate_constant,FORECAST_LENGTH,learn_rate_constant,learn_rate_constant);
+	}
+}
+
 void gen_c_code (node **layers,
 						node **back_layers,
 						int num_layers,
@@ -727,9 +1004,9 @@ void gen_c_code (node **layers,
 	// set up the traversal arguments
 	argstype myargs = {.file = myFile,
 					   .gen_backwards=0,
-					   .secondforward=0,
 					   .output_layer=layers[num_layers],
 					   .num_layers = num_layers,
+					   .secondforward=0,
 					   .shift_reg_depth = forecast_length,
 					   .forwardprop = layers,
 					   .backwardprop = back_layers};
@@ -831,4 +1108,3 @@ void gen_c_code (node **layers,
 	
 	fprintf(myFile,"}\n");
 }
-

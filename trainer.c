@@ -78,7 +78,7 @@ void generate_synthetic_data (PARAMS myparams,SIGNAL mysignal) {
 	mysignal->sample_rate = myparams->sample_rate;
 }
 
-void read_signal (char *filename,SIGNAL mysignal) {
+void read_signal (const char *filename,SIGNAL mysignal) {
 	FILE *myFile=fopen(filename,"r+");
 	
 	if (!myFile) {
@@ -173,8 +173,9 @@ void backward_pass (struct layer *mlp,float *y) {
 
 		for (int i=0;i<current_layer->neurons;i++) {
 			float sum=0.f;
+			int neurons_in_layer = current_layer->neurons;
 			for (int j=0;j<current_layer->next->neurons;j++) {
-				sum+=current_layer->next->deltas[j]*current_layer->next->weights[i];
+				sum+=current_layer->next->deltas[j]*current_layer->next->weights[j*neurons_in_layer+i];
 				//printf ("sum += deltas[next][%d] * weights[next][%d];\n",j,j);
 			}
 			
@@ -193,7 +194,6 @@ void update_weights (struct layer *mlp,float alpha) {
 	
 	while (current_layer) {
 		for (int i=0;i<current_layer->neurons;i++) {
-			float sum=0.f;
 			for (int j=0;j<current_layer->prev->neurons;j++) {
 				current_layer->weights[i*current_layer->prev->neurons+j] -=
 					alpha * current_layer->deltas[i] * current_layer->prev->outputs[j];
@@ -275,7 +275,7 @@ void initialize_mlp (struct layer *layers,int num_layers,int *layer_sizes) {
 	}
 }
 
-void plot (SIGNAL mysignal,char *title,int n,float time,FILE *dump_file) {
+void plot (SIGNAL mysignal,const char *title,int n,float time,FILE *dump_file) {
 	// dump signal
 	char str[4096];
 	FILE *myFile[1024];
@@ -444,7 +444,8 @@ int train_network (struct layer *layers,struct layer *initial_trainer_layers,int
 	layers[0].outputs = inputs;
 	
 	// zero-pad output array
-	for (int i=0;i<FORECAST_LENGTH;i++)	(*output_signal_expected)->s[i]=0.f;
+	for (int i=0;i<FORECAST_LENGTH;i++)
+		(*output_signal_expected)->s[i]=0.f;
 		
 	// learning rate schedule
 	//if (epoch % (num_epochs / 4) == 0) learning_rate = learning_rate / 10.f;
@@ -475,10 +476,17 @@ int train_network (struct layer *layers,struct layer *initial_trainer_layers,int
 	free(inputs);
 	
 #endif
+	dump_weights(layers,7);
+	dump_signal(*input_signal);
+	return 1;
+}
 	
+void check_predicted_signal (SIGNAL input_signal,SIGNAL output_signal) {
 	// allocate three signals to plot
 	struct signal mysigs[3];
 	
+	int num_samples = input_signal->points;
+
 	// allocate the error signal
 	float *error = (float *)malloc(sizeof(float)*num_samples);
 	
@@ -492,7 +500,7 @@ int train_network (struct layer *layers,struct layer *initial_trainer_layers,int
 		double total_error = 0.f;
 		
 		for (int i=0;i<num_samples-offset;i++)
-			total_error += fabs((*input_signal)->s[i+offset] - (*output_signal_expected)->s[i]);
+			total_error += fabs(input_signal->s[i+offset] - output_signal->s[i]);
 		
 		double mean_error = total_error / (double)(num_samples-offset);
 		
@@ -515,7 +523,7 @@ int train_network (struct layer *layers,struct layer *initial_trainer_layers,int
 	
 	// set error signal
 	for (int i=0;i<num_samples-FORECAST_LENGTH;i++)
-		error[i] = fabs((*input_signal)->s[i+min_error_offset] - (*output_signal_expected)->s[i]);
+		error[i] = fabs(input_signal->s[i+min_error_offset] - output_signal->s[i]);
 		//error[i] = (*input_signal)->s[i+min_error_offset] - (*output_signal_expected)->s[i];
 	
 	// zero pad the end of the error array, since the future values of the input signal are unknown
@@ -523,8 +531,8 @@ int train_network (struct layer *layers,struct layer *initial_trainer_layers,int
 		error[i] = 0.f;
 	
 	// copy the existing input and output signals to the new signal structures
-	memcpy((void *)&mysigs[0],(void *)(*input_signal),sizeof(struct signal));
-	memcpy((void *)&mysigs[1],(void *)(*output_signal_expected),sizeof(struct signal));
+	memcpy((void *)&mysigs[0],(void *)input_signal,sizeof(struct signal));
+	memcpy((void *)&mysigs[1],(void *)output_signal,sizeof(struct signal));
 	
 	// point to the error signal array in the error signal structure
 	mysigs[2].s = error;
@@ -537,23 +545,18 @@ int train_network (struct layer *layers,struct layer *initial_trainer_layers,int
 		perror("Error opening \"signals.txt\" for write\n");
 		exit(1);
 	}
-	plot(mysigs,"predicted signal",3,(*input_signal)->t[num_samples-1],dump_file);
+	plot(mysigs,"predicted signal",3,input_signal->t[num_samples-1],dump_file);
 	fclose(dump_file);
 
 	// deallocate the error signal array
 	free(error);
-
-	dump_weights(layers,7);
-	dump_signal((*input_signal));
-	
-	return 0;
 }
 
 void gen_testbench (FILE *myFile,SIGNAL input_signal,SIGNAL output_signal_expected) {
 	fprintf (myFile,"#include <stdio.h>\n"
 					"#include <hls_stream.h>\n"
-					"#include \"ap_fixed.h\"\n\n"
-					"void streaming_toplevel(hls::stream<%s>& input0,hls::stream<%s>& output0);\n\n",DATATYPE,DATATYPE);
+					"#include <ap_fixed.h>\n"
+					"#include \"network.h\"\n\n");
 	fprintf (myFile,"int main() {\n");
 	
 	// create input and output
@@ -594,11 +597,108 @@ void gen_testbench (FILE *myFile,SIGNAL input_signal,SIGNAL output_signal_expect
 	// prime the fifo
 	fprintf(myFile,"\tfor (int i=0;i<%d;i++) {\n"
 				   "\t\tinput0.write(input_data[i]);\n"
-				   "\t\tstreaming_toplevel(input0,output0);\n"
+				   "\t\tmynetwork (input0,output0);\n"
 				   "\t\tfprintf(myFile,\"%%0.8e,%%0.8e,%%0.8e\\n\",input_data[i],output_expected[i],output0.read());\n"
 				   "\t}\n\n",input_signal->points);
 	
 	fprintf(myFile,"\tfclose(myFile);\n\n"
 				   "return 0;\n"
 				   "}\n");
+}
+
+void compile_testbench_file (const char *filename,void **dl_handle,void (**fn)(hls::stream<float>&,hls::stream<float>&)) {
+	char str[1024],object_name[1024],shared_object_name[1024],shared_object_path[1024];
+	int ret;
+
+	// assume the filename has a ".cpp" extension
+	sscanf(filename,"%[^.]",object_name);
+	strcat(object_name,".o");
+	sscanf(filename,"%[^.]",shared_object_name);
+	strcat(shared_object_name,".so");
+	snprintf(shared_object_path,1024,"./%s",shared_object_name);
+
+	// compile the library file
+	snprintf(str,1024,"%s -I include -c -g -fpic -o %s %s 2> compile.log",COMPILE_COMMAND,object_name,filename);
+	logmsg("Compiling HLS network model using \"%s\"",str);
+	FILE *myFile = popen(str,"r");
+	if (!myFile) {
+		snprintf(str,1024,"ERROR compiling \"%s",filename);
+		perror(str);
+		exit(1);
+	}
+	ret = pclose(myFile);
+	if (ret != 0) {
+		fprintf(stderr,"[ERROR] Compile of DUT model failed, see compile.log\n");
+		exit(1);
+	}
+	
+	// convert the library file to a shared object
+	snprintf(str,1024,"%s -shared -o %s %s 2> compile.log",COMPILE_COMMAND,shared_object_name,object_name);
+	logmsg("Converting HLS network model to shared object using \"%s\"",str);
+	myFile = popen(str,"r");
+	if (!myFile) {
+		snprintf(str,1024,"ERROR compiling \"%s",filename);
+		perror(str);
+		exit(1);
+	}
+	ret = pclose(myFile);
+	if (ret != 0) {
+		fprintf(stderr,"[ERROR] Compile of shared object failed, see compile.log\n");
+		exit(1);
+	}
+	
+	logmsg("Loading HLS network model into memory");
+	char *error;
+	*dl_handle = dlopen(shared_object_path, RTLD_LAZY);
+	if (!*dl_handle) { 
+		fprintf(stderr, "%s\n", dlerror());
+		exit(1);
+	}
+	*fn = (void (*)(hls::stream<float>&,hls::stream<float>&))dlsym(*dl_handle, "mynetwork_dut");
+	if ((error = dlerror()) != NULL) {
+		fprintf(stderr, "%s\n", error);
+		exit(1);
+	}
+	//(*fn)();
+	//dlclose(lib_handle);
+	return;
+}
+
+void get_results_from_dut(SIGNAL input_signal,
+			  SIGNAL output_signal_expected,
+			  SIGNAL output_signal_dut,
+			  void (*fn)(hls::stream<float>&,hls::stream<float> &)) {
+
+	hls::stream<float> input0,output0;
+
+	for (int i=0;i<input_signal->points;i++) {
+		input0.write(input_signal->s[i]);
+		fn(input0,output0);
+		output_signal_dut->t[i]=input_signal->t[i];
+		output_signal_dut->s[i]=output0.read();
+	}
+	
+	struct signal signals[3];
+	//memcpy((void *)&signals[0],(void *)input_signal,sizeof(struct signal));
+	//memcpy((void *)&signals[1],(void *)output_signal_expected,sizeof(struct signal));
+	memcpy((void *)&signals[0],(void *)output_signal_dut,sizeof(struct signal));
+	plot(signals,"DUT",1,signals[0].t[signals[0].points-1],0);
+}
+
+void validate_test_bench (const char *source_name,SIGNAL input_signal,SIGNAL output_signal_expected) {
+	// compile the HLS code into a dynamically loadable shared object
+	void *lib_handle;
+	void (*dut)(hls::stream<float>&,hls::stream<float>&);
+	compile_testbench_file (source_name,&lib_handle,&dut);
+
+	// allocate space for the output of the DUT
+	SIGNAL output_signal_dut = (SIGNAL)malloc(sizeof(struct signal));
+	output_signal_dut->points = output_signal_expected->points;
+	output_signal_dut->sample_rate = output_signal_expected->sample_rate;
+	output_signal_dut->t = (float *)malloc(sizeof(float)*output_signal_dut->points);
+	output_signal_dut->s = (float *)malloc(sizeof(float)*output_signal_dut->points);
+	strcpy(output_signal_dut->name,"DUT output");
+	// get the results from the DUT
+	get_results_from_dut (input_signal,output_signal_expected,output_signal_dut,dut);
+	check_predicted_signal(input_signal,output_signal_dut);
 }

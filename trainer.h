@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include <dlfcn.h>
+
+#include "hls_stream.h"
+#include "ap_fixed.h"
 
 struct params {
 	float sample_rate;
@@ -59,5 +63,12 @@ void eval_network(struct layer *layers,SIGNAL mysignal_subsampled,SIGNAL mysigna
 void free_signal (SIGNAL mysignal);
 int train_network (struct layer *layers,struct layer *initial_trainer_layers,int num_layers,int *layer_sizes,int num_epochs,SIGNAL *input_signal,SIGNAL *output_signal_expected);
 void gen_testbench (FILE *myFile,SIGNAL input_signal,SIGNAL output_signal_expected);
+void compile_testbench_file (const char *filename,void **dl_handle,void (**fn)(hls::stream<float>&,hls::stream<float>&));
+void get_results_from_dut(SIGNAL input_signal,
+			  SIGNAL output_signal_expected,
+			  SIGNAL output_signal_dut,
+			  void (*fn)(hls::stream<float>&,hls::stream<float> &));
+void check_predicted_signal (SIGNAL input_signal,SIGNAL output_signal);
+void validate_test_bench (const char *source_name,SIGNAL input_signal,SIGNAL output_signal_expected);
 
 #endif

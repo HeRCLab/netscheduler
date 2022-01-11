@@ -12,16 +12,21 @@
 // relates to generation of DAGs
 #define BINARY_ADDER
 
+#define LAYER1_MEMORY_BANKS		1024
+
 // solver
 #define	USE_GUROBI
 #define GUROBI_PATH		"LD_LIBRARY_PATH=\"/home/csce611/gurobi911/linux64/lib\" /home/csce611/gurobi911/linux64/bin"
 //#define GUROBI_PATH	"/usr/sbin"
 
+// compiler
+#define COMPILE_COMMAND	"/usr/bin/g++"
+
 //#define	USE_SIGNAL_FILE	"Ivol_Acc_Load_data1_w3_NSTD.txt"
 //#define USE_SIGNAL_FILE 	"Ivol_Acc_Load_data3_w3_w2_50per_STD.txt"
 #define USE_SIGNAL_FILE		"data_set_3.txt"
 #define WRAPPER_FILENAME	"wrapper.cpp"
-#define SIGNAL_TIME_END	9.75f
+#define SIGNAL_TIME_END	20.f
 
 // type of schedule sought
 //#define VECTORIZE
@@ -44,19 +49,19 @@
 #define ONLINE_TRAINING
 
 // MLP forecasting objective
-#define FORECAST_LENGTH		20
-#define HISTORY_LENGTH		40
+#define FORECAST_LENGTH		40
+#define HISTORY_LENGTH		500
 
 // MLP topology (for DAG construction)
 #define	NUM_LAYERS		3  // input+hidden+output
-#define MLP_TOPOLOGY	{HISTORY_LENGTH,10,1}
+#define MLP_TOPOLOGY	{HISTORY_LENGTH,50,1}
 
 // syntheized signal
 #define	SYNTHESIZED_SIGNAL_TIME	20.f
 #define SAMPLE_RATE				5000.f
 
 // applies to synthesized and read signals
-#define SUBSAMPLED_RATE			1250.f
+#define SUBSAMPLED_RATE			17500.f
 
 // for both offline and online training
 #define LEARNING_RATE			0.1f
@@ -69,8 +74,8 @@
 //#define	GENPDFS
 
 // physical resource constraints (for scheduling)
-#define NUM_ADDERS			200
-#define NUM_MULTIPLIERS		200
+#define NUM_ADDERS			1000
+#define NUM_MULTIPLIERS		1000
 
 // data type for HLS
 // uncomment the first two lines for fixed point
@@ -130,16 +135,19 @@ typedef enum {INPUT,MULT,ADD,OUTPUT,ADDBIAS} node_type;
 // type for a layer type
 typedef enum {INPUT_LAYER,NEURON_LAYER,NEURON_BINARY_ADD_LAYER,OUTPUT_LAYER} layer_type;
 
+struct node;
+struct edge;
+
 // type for a DFG node
-typedef struct node {
+struct node {
 	int id;
 	int asap_cycle;
 	int alap_cycle;
 	node_type type;
-	struct edge *out_edges;
-	struct edge *in_edges;
-	struct node *next;
-	struct node *prev;
+	edge *out_edges;
+	edge *in_edges;
+	node *next;
+	node *prev;
 	int flag;
 	int scheduled_cycle;
 	int layer;
@@ -147,22 +155,22 @@ typedef struct node {
 	int neuron;
 	int final_adder;
 	int delta_multiplier;
-} node;
+};
 
-typedef struct {
+struct register_table {
 	int *register_usage_by_cycle;
-} register_table;
+};
 
 // type for an edge
-typedef struct edge {
+struct edge {
 	node *edge;
 	int input_num;
 	struct edge *next;
-} edge;
+};
 
 // type for traversal function
-typedef struct {
-	node *node;
+struct argstype {
+	struct node *node;
 	FILE *file;
 	int cycle;
 	node_type type;
@@ -175,15 +183,15 @@ typedef struct {
 	int flag;
 	int history_length;
 	int gen_backwards;
-	node *output_layer;
+	struct node *output_layer;
 	int num_layers;
 	int forecast_length;
 	int backprop;
 	int secondforward;
 	int shift_reg_depth;
-	node **forwardprop;
-	node **backwardprop;
-} argstype;
+	struct node **forwardprop;
+	struct node **backwardprop;
+};
 
 typedef struct {
 	node_type type;
@@ -211,10 +219,21 @@ void gen_c_code (node **layers,
 						int gen_backprop,
 						int forecast_length,
 						struct layer *trainer_layers);
-						
+void gen_header_file (int num_layers,
+					  int *layer_sizes,
+					  struct layer *trainer_layers);
+void gen_c_code_loop_version (node **layers,
+						node **back_layers,
+						int num_layers,
+						int *layer_sizes,
+						FILE *myFile,
+						int gen_backprop,
+						int forecast_length,
+						struct layer *trainer_layers);
+
 void compute_functional_utilization(node **layers,int num_layers,int num_inputs,int num_outputs,argstype *myargs);
 void inc_functional_utilization (node *mynode,void *args);
-void generate_hls_wrapper_code(char *filename,node **layers);
+void generate_hls_wrapper_code(const char *filename,node **layers);
 
 // net to DAG routines
 int add_layer (node **layers,int layer_num,int id,int prev_layer_size,int new_layer_size,layer_type type,int inc_bias,int inc_delta_multiplier);
